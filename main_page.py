@@ -2,6 +2,20 @@ import streamlit as st
 import pandas as pd
 from io import StringIO
 
+
+st.sidebar.header("🔐 Login")
+
+user = st.sidebar.text_input("Usuário")
+password = st.sidebar.text_input("Senha", type="password")
+
+if user == "cliente1" and password == "senha123":
+    st.success("Acesso autorizado!")
+    # Aqui vai o conteúdo da página individual
+else:
+    st.warning("Acesso negado.")
+    st.stop()
+
+
 st.set_page_config(page_title="Dashboard de Clientes", layout="wide")
 
 st.title("📊 Dashboard de Acompanhamento de Clientes")
