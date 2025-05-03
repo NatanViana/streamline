@@ -1,6 +1,7 @@
 import streamlit as st
 import pandas as pd
-from io import StringIO
+import gspread
+from google.oauth2 import service_account
 
 st.set_page_config(page_title="Dashboard de Clientes", layout="wide")
 
@@ -14,14 +15,22 @@ password = st.sidebar.text_input("Senha", type="password")
 if user == "cliente1" and password == "senha123":
     st.success("Acesso autorizado!")
 
-    # Dados iniciais (pode ser substituído por upload ou leitura de arquivo)
+    # Autenticação e leitura da planilha
     if 'df' not in st.session_state:
-        dados_csv = """Cliente,Sessoes_Mes,Valor_Pago,Valor_Pendente
-    Joao,5,500,100
-    Maria,3,300,200
-    Pedro,4,400,0
-    """
-        st.session_state.df = pd.read_csv(StringIO(dados_csv))
+        creds = service_account.Credentials.from_service_account_info(
+            st.secrets["gcp_service_account"],
+            scopes=["https://www.googleapis.com/auth/spreadsheets"]
+        )
+
+        client = gspread.authorize(creds)
+
+        # Abrir planilha
+        sheet_url = st.secrets["google_sheets"]["https://docs.google.com/spreadsheets/d/1UHE0b2wP3-BmtHYzESyKOXWP5SmgHD--/edit?gid=1813158749#gid=1813158749"]
+        sheet = client.worsheet("Financeiro 2025")  # ou .worksheet("Nome da aba")
+
+        # Ler dados como DataFrame
+        data = sheet.get_all_records()
+        st.session_state.df = pd.DataFrame(data)
 
     # Sidebar: adicionar ou editar cliente
     st.sidebar.header("🔧 Atualizar Dados")
