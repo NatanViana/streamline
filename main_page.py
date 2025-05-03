@@ -2,6 +2,9 @@ import streamlit as st
 import pandas as pd
 from io import StringIO
 
+st.set_page_config(page_title="Dashboard de Clientes", layout="wide")
+
+st.title("📊 Dashboard de Acompanhamento de Clientes")
 
 st.sidebar.header("🔐 Login")
 
@@ -10,10 +13,6 @@ password = st.sidebar.text_input("Senha", type="password")
 
 if user == "cliente1" and password == "senha123":
     st.success("Acesso autorizado!")
-    
-    st.set_page_config(page_title="Dashboard de Clientes", layout="wide")
-
-    st.title("📊 Dashboard de Acompanhamento de Clientes")
 
     # Dados iniciais (pode ser substituído por upload ou leitura de arquivo)
     if 'df' not in st.session_state:
