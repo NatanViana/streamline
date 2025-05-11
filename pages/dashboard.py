@@ -17,7 +17,7 @@ def show_dashboard():
         mes = st.selectbox("📅 Mês", list(range(1, 13)), index=datetime.now().month - 1)
         print(mes)
     with col2:
-        ano = st.selectbox("📆 Ano", list(range(2023, datetime.now().year + 1)), index=1)
+        ano = st.selectbox("📆 Ano", list(range(2023, datetime.now().year + 1)), index = len(list(range(2023, datetime.now().year + 1)))-1)
         print(ano)
 
     # Exibir resumo financeiro filtrado por mês e ano

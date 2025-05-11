@@ -11,10 +11,21 @@ from pages.gerenciar_cliente import show_gerenciar_cliente
 from db.functions import listar_clientes
 
 
+
 # Sidebar de navegação
 st.set_page_config(layout="wide")
+
+# Logo no topo
+col_logo, col_title = st.columns([1, 10])
+with col_logo:
+    st.image("assets/logo.png", width=600)
+with col_title:
+    st.markdown("<h1 margin-top: 30px;'>Instituto Amplamente</h1>", unsafe_allow_html=True)
+
+st.write("--------------------------------------")
+
 st.sidebar.title("📂 Navegação")
-pagina = st.sidebar.radio("Escolha uma opção", [
+pagina = st.sidebar.selectbox("Escolha uma opção", [
     "🏠 Página Inicial",
     "📄 Gerenciar Clientes",
     "➕ Novo Cliente"

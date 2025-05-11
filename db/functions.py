@@ -23,7 +23,8 @@ CREATE TABLE IF NOT EXISTS sessoes (
     hora TEXT,
     valor DOUBLE,
     status TEXT,
-    cobrar BOOLEAN
+    cobrar BOOLEAN,
+    pagamento BOOLEAN,        
 );
 """)
 
@@ -39,7 +40,7 @@ def adicionar_cliente(nome, valor_sessao):
     novo_id = (result[0] or 0) + 1
     conn.execute("INSERT INTO clientes (id, nome, valor_sessao) VALUES (?, ?, ?)", (novo_id, nome, valor_sessao))
 
-def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar):
+def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento):
     # Verificar se sessão com data e hora para o mesmo cliente já existe
     existente = conn.execute("""
         SELECT COUNT(*) FROM sessoes
@@ -51,9 +52,9 @@ def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar):
     result = conn.execute("SELECT MAX(id) FROM sessoes").fetchone()
     novo_id = (result[0] or 0) + 1
     conn.execute("""
-        INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar)
-        VALUES (?, ?, ?, ?, ?, ?, ?)
-    """, (novo_id, int(cliente_id), data, hora, valor, status, cobrar))
+        INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar, pagamento)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+    """, (novo_id, int(cliente_id), data, hora, valor, status, cobrar, pagamento))
 
 def excluir_cliente(cliente_id):
     conn.execute("DELETE FROM sessoes WHERE cliente_id = ?", (int(cliente_id),))
@@ -61,6 +62,9 @@ def excluir_cliente(cliente_id):
 
 def excluir_sessao(sessao_id):
     conn.execute("DELETE FROM sessoes WHERE id = ?", (int(sessao_id),))
+
+def update_sessao(sessao_id, valor):
+    conn.execute("UPDATE sessoes SET pagamento = ? WHERE id = ?", (valor,int(sessao_id)))
 
 def sessoes_por_cliente(cliente_id):
     return conn.execute("SELECT * FROM sessoes WHERE cliente_id = ?", (int(cliente_id),)).df()
@@ -71,8 +75,8 @@ def resumo_financeiro(mes: int, ano: int):
         c.nome,
         COUNT(CASE WHEN s.status = 'realizada' THEN 1 END) AS sessoes_feitas,
         COUNT(CASE WHEN s.status = 'cancelada' THEN 1 END) AS sessoes_canceladas,
-        SUM(CASE WHEN s.status = 'realizada' THEN s.valor ELSE 0 END) AS total_recebido,
-        SUM(CASE WHEN s.status = 'cancelada' AND s.cobrar THEN s.valor ELSE 0 END) AS total_a_receber
+        SUM(CASE WHEN s.status = 'realizada' AND s.pagamento THEN s.valor ELSE 0 END) AS total_recebido,
+        SUM(CASE WHEN (s.status = 'cancelada' AND s.cobrar) OR (s.status = 'realizada' AND NOT s.pagamento) THEN s.valor ELSE 0 END) AS total_a_receber
     FROM clientes c
     LEFT JOIN sessoes s 
         ON c.id = s.cliente_id
