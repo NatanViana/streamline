@@ -10,7 +10,37 @@ from pages.novo_cliente import show_novo_cliente
 from pages.gerenciar_cliente import show_gerenciar_cliente
 from db.functions import listar_clientes
 
+# Simulação de banco de usuários (substitua por banco real se quiser)
+USUARIOS = {
+    "usuario": "noelia",
+    "senha": "123"
+}
 
+# Inicializar estado de autenticação
+if "autenticado" not in st.session_state:
+    st.session_state.autenticado = False
+if "tentativas" not in st.session_state:
+    st.session_state.tentativas = 0
+
+def login():
+    st.title("🔐 Login do Sistema")
+    usuario = st.text_input("Usuário")
+    senha = st.text_input("Senha", type="password")
+    if st.button("Entrar"):
+        if usuario in USUARIOS and USUARIOS["senha"] == senha:
+            st.session_state.autenticado = True
+            st.success("✅ Login realizado com sucesso!")
+            st.rerun()
+        else:
+            st.session_state.tentativas += 1
+            st.error("❌ Usuário ou senha incorretos. Tente novamente.")
+            if st.session_state.tentativas >= 3:
+                st.info("🔐 Não possui conta? Solicite cadastro ao administrador.")
+
+# Se não estiver autenticado, mostra a tela de login
+if not st.session_state.autenticado:
+    login()
+    st.stop()
 
 # Sidebar de navegação
 st.set_page_config(layout="wide")
