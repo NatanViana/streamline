@@ -20,8 +20,7 @@ col_logo, col_title = st.columns([1, 10])
 with col_logo:
     st.image("assets/logo_neuro.png", width=600)
 with col_title:
-
-st.write("--------------------------------------")
+    st.write("--------------------------------------")
 
 st.sidebar.title("📂 Navegação")
 pagina = st.sidebar.selectbox("Escolha uma opção", [
