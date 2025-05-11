@@ -12,8 +12,7 @@ def show_novo_cliente():
         submitted = st.form_submit_button("✅ Cadastrar Cliente")
         if submitted:
             if nome:
-                client_id = adicionar_cliente(nome, valor)
+                adicionar_cliente(nome, valor)
                 st.success(f"Cliente **{nome}** cadastrado com sucesso!")
-                show_gerenciar_cliente(client_id)
             else:
                 st.error("Por favor, preencha o nome do cliente.")

@@ -9,9 +9,10 @@ from pages.dashboard import show_dashboard
 from pages.novo_cliente import show_novo_cliente
 from pages.gerenciar_cliente import show_gerenciar_cliente
 from db.functions import listar_clientes
-from db.functions import conn
+
 
 # Sidebar de navegação
+st.set_page_config(layout="wide")
 st.sidebar.title("📂 Navegação")
 pagina = st.sidebar.radio("Escolha uma opção", [
     "🏠 Página Inicial",
@@ -33,6 +34,3 @@ elif pagina == "📄 Gerenciar Clientes" and cliente_selecionado:
     show_gerenciar_cliente(cliente_selecionado)
 
 
-if __name__ == "__main__" or True:
-    conn.close()
-    print("Encerrada a conexão")

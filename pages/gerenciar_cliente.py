@@ -2,15 +2,43 @@
 import streamlit as st
 from datetime import datetime
 import pandas as pd
-from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, gerar_pdf
+from fpdf import FPDF
+from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao
 import io
 
-def show_gerenciar_cliente(client_id):
+def gerar_pdf_texto(sessoes, cliente_nome):
+    pdf = FPDF()
+    pdf.add_page()
+    pdf.set_font("Arial", size=12)
+    pdf.cell(200, 10, txt=f"Relatório de Sessões - {cliente_nome}", ln=True, align='C')
+    pdf.ln(10)
+
+    for i, (_, row) in enumerate(sessoes.iterrows(), start=1):
+        hora_formatada = row['hora'][:5] if isinstance(row['hora'], str) else str(row['hora'])[:5]
+        pdf.set_font("Arial", style='B', size=12)
+        pdf.cell(200, 10, txt=f"Sessão {i}", ln=True)
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, txt=f"Data: {row['data'].date()} | Hora: {hora_formatada}", ln=True)
+        pdf.cell(200, 10, txt=f"Valor: R$ {row['valor']:.2f}", ln=True)
+        pdf.cell(200, 10, txt=f"Status: {row['status']} | Cobrar se cancelada: {'Sim' if row['cobrar'] else 'Não'}", ln=True)
+        pdf.ln(5)
+
+    return pdf.output(dest='S').encode('latin1')
+
+def show_gerenciar_cliente(cliente_nome):
     clientes = listar_clientes()
-    cliente = clientes[clientes['id'] == client_id].iloc[0]
-    cliente_nome = cliente['nome']
+    cliente = clientes[clientes['nome'] == cliente_nome].iloc[0]
+    cliente_id = int(cliente['id'])
 
     st.title(f"📅 Cliente: {cliente_nome}")
+
+    # Botão para excluir cliente com confirmação
+    if st.button("❌ Excluir Cliente"):
+        excluir_cliente(cliente_id)
+        st.success(f"Cliente {cliente_nome} excluído com sucesso.")
+        st.session_state['pagina'] = "🏠 Página Inicial"
+        st.rerun()
+
     st.markdown("### 🗓️ Registrar Nova Sessão")
 
     with st.form("form_sessao"):
@@ -24,11 +52,15 @@ def show_gerenciar_cliente(client_id):
             cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
         salvar = st.form_submit_button("📂 Salvar Sessão")
         if salvar:
-            adicionar_sessao(client_id, str(data), str(hora), valor, status, cobrar)
-            st.success("Sessão registrada com sucesso!")
+            try:
+                adicionar_sessao(cliente_id, str(data), str(hora), valor, status, cobrar)
+                st.success("Sessão registrada com sucesso!")
+                st.rerun()
+            except ValueError as e:
+                st.error(str(e))
 
     st.markdown("### 📅 Sessões Registradas")
-    sessoes = sessoes_por_cliente(client_id)
+    sessoes = sessoes_por_cliente(cliente_id)
     sessoes['data'] = pd.to_datetime(sessoes['data'])
 
     col1, col2 = st.columns(2)
@@ -43,12 +75,19 @@ def show_gerenciar_cliente(client_id):
         (sessoes['data'].dt.year == ano)
     ]
 
-    st.dataframe(sessoes_filtradas, use_container_width=True)
+    for _, row in sessoes_filtradas.iterrows():
+        with st.expander(f"📍 {row['data'].date()} às {row['hora']} - {row['status']}"):
+            st.write(f"💵 Valor: R$ {row['valor']:.2f}")
+            st.write(f"💬 Cobrar se cancelada: {'Sim' if row['cobrar'] else 'Não'}")
+            if st.button(f"🗑️ Excluir sessão {row['id']}", key=f"excluir_{row['id']}"):
+                excluir_sessao(row['id'])
+                st.success("Sessão excluída com sucesso.")
+                st.rerun()
 
     # Exportar CSV
     csv = sessoes_filtradas.to_csv(index=False).encode('utf-8')
     st.download_button("⬇️ Exportar CSV", csv, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.csv", mime='text/csv')
 
-    # Exportar PDF
-    pdf_bytes = gerar_pdf(sessoes_filtradas, cliente_nome)
+    # Exportar PDF (modo descritivo)
+    pdf_bytes = gerar_pdf_texto(sessoes_filtradas, cliente_nome)
     st.download_button("📄 Exportar PDF", pdf_bytes, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.pdf", mime='application/pdf')

@@ -4,6 +4,7 @@ from db.functions import resumo_financeiro
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
+from db.functions import conn
 
 
 def show_dashboard():
@@ -14,17 +15,19 @@ def show_dashboard():
     col1, col2 = st.columns(2)
     with col1:
         mes = st.selectbox("📅 Mês", list(range(1, 13)), index=datetime.now().month - 1)
+        print(mes)
     with col2:
         ano = st.selectbox("📆 Ano", list(range(2023, datetime.now().year + 1)), index=1)
+        print(ano)
 
-    # Obter dados
-    df = resumo_financeiro()
+    # Exibir resumo financeiro filtrado por mês e ano
+    df_resumido = resumo_financeiro(mes, ano)
 
     # KPIs
-    total_recebido = df['total_recebido'].sum()
-    total_pendente = df['total_a_receber'].sum()
-    total_sessoes = df['sessoes_feitas'].sum()
-    total_canceladas = df['sessoes_canceladas'].sum()
+    total_recebido = df_resumido['total_recebido'].sum()
+    total_pendente = df_resumido['total_a_receber'].sum()
+    total_sessoes = df_resumido['sessoes_feitas'].sum()
+    total_canceladas = df_resumido['sessoes_canceladas'].sum()
 
     col1, col2, col3 = st.columns(3)
     col1.metric("💰 Total Recebido", f"R$ {total_recebido:,.2f}")
@@ -51,4 +54,4 @@ def show_dashboard():
 
     st.plotly_chart(fig, use_container_width=True)
 
-    st.dataframe(df, use_container_width=True)
+    st.dataframe(df_resumido, use_container_width=True)
