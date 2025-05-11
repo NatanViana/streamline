@@ -16,11 +16,11 @@ from db.functions import listar_clientes
 st.set_page_config(layout="wide")
 
 # Logo no topo
-col_logo, col_title = st.columns([1, 10])
-with col_logo:
-    st.image("assets/logo.png", width=600)
-with col_title:
-    st.markdown("<h1 margin-top: 30px;'>Instituto Amplamente</h1>", unsafe_allow_html=True)
+# col_logo, col_title = st.columns([1, 10])
+# with col_logo:
+#     st.image("assets/logo.png", width=600)
+# with col_title:
+#     st.markdown("<h1 margin-top: 30px;'>Instituto Amplamente</h1>", # unsafe_allow_html=True)
 
 st.write("--------------------------------------")
 
