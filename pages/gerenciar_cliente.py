@@ -1,10 +1,19 @@
 # /pages/gerenciar_cliente.py
 import streamlit as st
-from datetime import datetime
 import pandas as pd
 from fpdf import FPDF
 from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao
 import io
+from datetime import datetime, timedelta, time
+import pytz
+
+# Definir timezone -3 UTC
+timezone_utc_minus3 = pytz.timezone('Etc/GMT+3')  # UTC-3 é GMT+3 invertido
+
+# Hora local correta
+hora_local = datetime.now(timezone_utc_minus3).time()
+
+
 
 def gerar_pdf_texto(sessoes, cliente_nome, mes, ano):
     pdf = FPDF()
@@ -47,7 +56,7 @@ def show_gerenciar_cliente(cliente_nome):
         col1, col2 = st.columns(2)
         with col1:
             data = st.date_input("📅 Data", datetime.today())
-            hora = st.time_input("🕒 Hora", datetime.now().time())
+            hora = st.time_input("🕒 Hora", hora_local)
         with col2:
             valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
             status = st.selectbox("📌 Status", ["realizada", "cancelada"])
