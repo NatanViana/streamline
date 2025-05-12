@@ -45,24 +45,26 @@ def show_gerenciar_cliente(cliente_nome):
     st.markdown("### 🗓️ Registrar Nova Sessão")
 
     with st.form("form_sessao"):
-        col1, col2 = st.columns(2)
-        with col1:
-            data = st.date_input("📅 Data", datetime.today())
-            hora = st.time_input("🕒 Hora", datetime.now().replace(second=0, microsecond=0).time())
-            hora_str = hora.strftime("%H:%M")
-        with col2:
-            valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
-            status = st.selectbox("📌 Status", ["realizada", "cancelada"])
-            cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
-            pagamento = st.checkbox("💸 Pago?", value=False) # pode ser a data
-        salvar = st.form_submit_button("📂 Salvar Sessão")
-        if salvar:
-            try:
-                adicionar_sessao(cliente_id, str(data), hora_str, valor, status, cobrar, pagamento)
-                st.success("Sessão registrada com sucesso!")
-                st.rerun()
-            except ValueError as e:
-                st.error(str(e))
+    col1, col2 = st.columns(2)
+    with col1:
+        data = st.date_input("📅 Data", datetime.today())
+        hora_input = st.time_input("🕒 Hora", datetime.now().replace(second=0, microsecond=0).time())
+    with col2:
+        valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
+        status = st.selectbox("📌 Status", ["realizada", "cancelada"])
+        cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
+        pagamento = st.checkbox("💸 Pago?", value=False)
+
+    salvar = st.form_submit_button("📂 Salvar Sessão")
+    if salvar:
+        try:
+            # Conversão correta no momento do submit
+            hora_str = hora_input.strftime("%H:%M")
+            adicionar_sessao(cliente_id, str(data), hora_str, valor, status, cobrar, pagamento)
+            st.success("Sessão registrada com sucesso!")
+            st.rerun()
+        except ValueError as e:
+            st.error(str(e))
 
     st.markdown("### 📅 Sessões Registradas")
     sessoes = sessoes_por_cliente(cliente_id)
