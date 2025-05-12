@@ -4,15 +4,7 @@ import pandas as pd
 from fpdf import FPDF
 from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao
 import io
-from datetime import datetime, timedelta, time
-import pytz
-
-# Definir timezone -3 UTC
-timezone_utc_minus3 = pytz.timezone('Etc/GMT+3')  # UTC-3 é GMT+3 invertido
-
-# Hora local correta
-hora_local = datetime.now(timezone_utc_minus3).time()
-
+from datetime import datetime
 
 
 def gerar_pdf_texto(sessoes, cliente_nome, mes, ano):
@@ -57,6 +49,7 @@ def show_gerenciar_cliente(cliente_nome):
         with col1:
             data = st.date_input("📅 Data", datetime.today())
             hora = st.time_input("🕒 Hora", hora_local)
+            hora_marcada = "%d:%d" % hora
         with col2:
             valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
             status = st.selectbox("📌 Status", ["realizada", "cancelada"])
@@ -65,7 +58,7 @@ def show_gerenciar_cliente(cliente_nome):
         salvar = st.form_submit_button("📂 Salvar Sessão")
         if salvar:
             try:
-                adicionar_sessao(cliente_id, str(data), str(hora), valor, status, cobrar, pagamento)
+                adicionar_sessao(cliente_id, str(data), str(hora_marcada), valor, status, cobrar, pagamento)
                 st.success("Sessão registrada com sucesso!")
                 st.rerun()
             except ValueError as e:
