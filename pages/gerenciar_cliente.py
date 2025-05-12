@@ -44,21 +44,24 @@ def show_gerenciar_cliente(cliente_nome):
 
     st.markdown("### 🗓️ Registrar Nova Sessão")
 
+    # Inicializa uma chave no session_state caso não exista
+    if "hora_sessao" not in st.session_state:
+        st.session_state['hora_sessao'] = datetime.now().replace(second=0, microsecond=0).time()
+    
     with st.form("form_sessao"):
-    col1, col2 = st.columns(2)
-    with col1:
-        data = st.date_input("📅 Data", datetime.today())
-        hora_input = st.time_input("🕒 Hora", datetime.now().replace(second=0, microsecond=0).time())
-    with col2:
-        valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
-        status = st.selectbox("📌 Status", ["realizada", "cancelada"])
-        cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
-        pagamento = st.checkbox("💸 Pago?", value=False)
-
-    salvar = st.form_submit_button("📂 Salvar Sessão")
-    if salvar:
-        try:
-            # Conversão correta no momento do submit
+        col1, col2 = st.columns(2)
+        with col1:
+            data = st.date_input("📅 Data", datetime.today())
+            hora_input = st.time_input("🕒 Hora", value=st.session_state['hora_sessao'], key="hora_input")
+        with col2:
+            valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
+            status = st.selectbox("📌 Status", ["realizada", "cancelada"])
+            cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
+            pagamento = st.checkbox("💸 Pago?", value=False)
+    
+        salvar = st.form_submit_button("📂 Salvar Sessão")
+        if salvar:
+            st.session_state['hora_sessao'] = hora_input
             hora_str = hora_input.strftime("%H:%M")
             adicionar_sessao(cliente_id, str(data), hora_str, valor, status, cobrar, pagamento)
             st.success("Sessão registrada com sucesso!")
