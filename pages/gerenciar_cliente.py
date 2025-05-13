@@ -5,6 +5,14 @@ import pandas as pd
 from fpdf import FPDF
 from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao
 import io
+import time
+
+def gerar_horarios():
+        horarios = []
+        for h in range(0, 24):
+            for m in [0, 30]:
+                horarios.append(f"{h:02d}:{m:02d}")
+        return horarios
 
 def gerar_pdf_texto(sessoes, cliente_nome, mes, ano):
     pdf = FPDF()
@@ -46,33 +54,29 @@ def show_gerenciar_cliente(cliente_nome):
     with st.form("form_sessao"):
         col1, col2 = st.columns(2)
         with col1:
-            data = st.date_input("📅 Data", datetime.today(), key="data_sessao")
-            
-            if "hora_sessao" not in st.session_state:
-                st.session_state["hora_sessao"] = datetime.strptime("14:00", "%H:%M").time()
-            
-            hora = st.time_input("🕒 Hora", value=st.session_state["hora_sessao"], key="hora_sessao_variable")
-
+            data = st.date_input("📅 Data", datetime.today())
+            horarios = gerar_horarios()
+            hora = st.selectbox("🕒 Hora", horarios)
         with col2:
-            valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']), key="valor_sessao")
-            status = st.selectbox("📌 Status", ["realizada", "cancelada"], key="status_sessao")
-            cobrar = st.checkbox("💸 Cobrar se cancelada", value=False, key="cobrar_sessao")
-            pagamento = st.checkbox("💸 Pago?", value=False, key="pagamento_sessao")
+            valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
+            status = st.selectbox("📌 Status", ["realizada", "cancelada"])
+            cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
+            pagamento = st.checkbox("💸 Pago?", value=False)
 
         salvar = st.form_submit_button("📂 Salvar Sessão")
         if salvar:
             try:
-                hora_formatada = st.session_state["hora_sessao_variable"].strftime("%H:%M")
                 adicionar_sessao(
                     cliente_id,
-                    str(st.session_state["data_sessao"]),
-                    hora_formatada,
-                    st.session_state["valor_sessao"],
-                    st.session_state["status_sessao"],
-                    st.session_state["cobrar_sessao"],
-                    st.session_state["pagamento_sessao"]
+                    str(data),
+                    str(hora),
+                    valor,
+                    status,
+                    cobrar,
+                    pagamento
                 )
-                st.success(f"Sessão em {st.session_state['data_sessao']} às {hora_formatada} registrada com sucesso!")
+                st.success(f"Sessão em {data} às {hora} registrada com sucesso!")
+                time.sleep(0.5)  # pausa de 1.5 segundos
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
