@@ -12,7 +12,10 @@ def cadastro():
     nova_senha = st.text_input("Nova Senha", type="password")
     funcao = st.selectbox("Função", ['Assistente', 'Psicóloga'])
     if funcao == 'Psicóloga':
-        psicologo_responsavel = funcao
+        # Gerar novo id incremental
+        result = conn.execute("SELECT MAX(id) FROM psicologos").fetchone()
+        novo_id = (result[0] or 0) + 1
+        psicologo_responsavel = novo_id
         privilegio = True
     else:
         psicologos = conn.execute("SELECT DISTINCT id ,nome FROM psicologos").fetchall()
