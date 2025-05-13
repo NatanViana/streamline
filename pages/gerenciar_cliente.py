@@ -47,17 +47,21 @@ def show_gerenciar_cliente(cliente_nome):
         col1, col2 = st.columns(2)
         with col1:
             data = st.date_input("📅 Data", datetime.today())
-            hora = st.time_input("🕒 Hora", datetime.now().time())
+            # Use uma string fixa para o default ou verifique em session_state para evitar reset automático
+            default_hora = datetime.strptime("14:00", "%H:%M").time()
+            hora = st.time_input("🕒 Hora", value=default_hora, key="hora_sessao")
         with col2:
             valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
             status = st.selectbox("📌 Status", ["realizada", "cancelada"])
             cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
-            pagamento = st.checkbox("💸 Pago?", value=False) # pode ser a data
+            pagamento = st.checkbox("💸 Pago?", value=False)
+
         salvar = st.form_submit_button("📂 Salvar Sessão")
         if salvar:
             try:
-                adicionar_sessao(cliente_id, str(data), str(hora), valor, status, cobrar, pagamento)
-                st.success("Sessão registrada com sucesso!")
+                hora_formatada = hora.strftime("%H:%M")
+                adicionar_sessao(cliente_id, str(data), hora_formatada, valor, status, cobrar, pagamento)
+                st.success(f"Sessão em {data} às {hora_formatada} registrada com sucesso!")
                 st.rerun()
             except ValueError as e:
                 st.error(str(e))
