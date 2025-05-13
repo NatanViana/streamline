@@ -1,8 +1,6 @@
 # /pages/novo_cliente.py
 import streamlit as st
 from db.functions import adicionar_cliente
-from pages.gerenciar_cliente import show_gerenciar_cliente
-
 
 def show_novo_cliente():
     st.title("➕ Cadastro de Novo Cliente")
