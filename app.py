@@ -53,18 +53,18 @@ def interface(privilegio, usuario):
             "📄 Gerenciar Clientes",
             "➕ Novo Cliente"
         ])
-
-    clientes = listar_clientes(usuario[4])
+    psicologo_resoonsavel = usuario[4]
+    clientes = listar_clientes(psicologo_resoonsavel)
     cliente_selecionado = None
     if pagina == "📄 Gerenciar Clientes" and not clientes.empty:
         cliente_selecionado = st.sidebar.selectbox("👤 Selecione o cliente", list(clientes['nome']))
 
     if pagina == "🏠 Página Inicial":
-        show_dashboard(usuario[4])
+        show_dashboard(psicologo_resoonsavel)
     elif pagina == "➕ Novo Cliente":
-        show_novo_cliente(usuario[4])
+        show_novo_cliente(psicologo_resoonsavel)
     elif pagina == "📄 Gerenciar Clientes" and cliente_selecionado:
-        show_gerenciar_cliente(cliente_selecionado, usuario[4])
+        show_gerenciar_cliente(cliente_selecionado, psicologo_resoonsavel)
     elif pagina == "✅ Edição de Usuários":
         show_edicao_usuarios()
 
