@@ -40,7 +40,7 @@ def interface(privilegio, usuario):
         st.write("--------------------------------------")
 
     st.sidebar.title("📂 Navegação")
-    if(privilegio):
+    if privilegio:
         pagina = st.sidebar.selectbox("Escolha uma opção", [
             "🏠 Página Inicial",
             "📄 Gerenciar Clientes",
