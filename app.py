@@ -1,75 +1,82 @@
-# Estrutura de um projeto organizado para o app de gestão de clientes com Streamlit e DuckDB
-
-# ============================
-# /app.py (arquivo principal)
-# ============================
-
 import streamlit as st
 from pages.dashboard import show_dashboard
 from pages.novo_cliente import show_novo_cliente
 from pages.gerenciar_cliente import show_gerenciar_cliente
-from db.functions import listar_clientes
+from db.functions import listar_clientes, adicionar_usuario, conn
+from pages.user_edition import show_edicao_usuarios
 
-# Simulação de banco de usuários (substitua por banco real se quiser)
-USUARIOS = {
-    "usuario": "noelia",
-    "senha": "123"
-}
-
-# Inicializar estado de autenticação
+# Inicializar estados
 if "autenticado" not in st.session_state:
     st.session_state.autenticado = False
-if "tentativas" not in st.session_state:
-    st.session_state.tentativas = 0
+if "usuario_logado" not in st.session_state:
+    st.session_state.usuario_logado = None
+if "id_usuario" not in st.session_state:
+    st.session_state.id_usuario = None
 
+# Função login
 def login():
     st.title("🔐 Login do Sistema")
     usuario = st.text_input("Usuário")
     senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
-        if usuario in USUARIOS and USUARIOS["senha"] == senha:
+        result = conn.execute("SELECT * FROM login WHERE usuario = ? AND senha = ?", (usuario, senha)).fetchone()
+        if result:
             st.session_state.autenticado = True
+            st.session_state.usuario_logado = usuario
+            st.session_state.id_usuario = result[0]  # id está na primeira coluna
             st.success("✅ Login realizado com sucesso!")
             st.rerun()
         else:
-            st.session_state.tentativas += 1
             st.error("❌ Usuário ou senha incorretos. Tente novamente.")
-            if st.session_state.tentativas >= 3:
-                st.info("🔐 Não possui conta? Solicite cadastro ao administrador.")
 
-# Se não estiver autenticado, mostra a tela de login
+
+# Interface principal
+def interface(privilegio, usuario):
+    st.set_page_config(layout="wide")
+    col_logo, col_title = st.columns([1, 10])
+    with col_logo:
+        st.image("assets/logo_neuro.png", width=600)
+    with col_title:
+        st.write("--------------------------------------")
+
+    st.sidebar.title("📂 Navegação")
+    if(privilegio):
+        pagina = st.sidebar.selectbox("Escolha uma opção", [
+            "🏠 Página Inicial",
+            "📄 Gerenciar Clientes",
+            "➕ Novo Cliente",
+            "✅ Edição de Usuários"
+        ])
+    else:
+        pagina = st.sidebar.selectbox("Escolha uma opção", [
+            "🏠 Página Inicial",
+            "📄 Gerenciar Clientes",
+            "➕ Novo Cliente"
+        ])
+
+    clientes = listar_clientes(usuario[4])
+    cliente_selecionado = None
+    if pagina == "📄 Gerenciar Clientes" and not clientes.empty:
+        cliente_selecionado = st.sidebar.selectbox("👤 Selecione o cliente", list(clientes['nome']))
+
+    if pagina == "🏠 Página Inicial":
+        show_dashboard(usuario[4])
+    elif pagina == "➕ Novo Cliente":
+        show_novo_cliente(usuario[4])
+    elif pagina == "📄 Gerenciar Clientes" and cliente_selecionado:
+        show_gerenciar_cliente(cliente_selecionado, usuario[4])
+    elif pagina == "✅ Edição de Usuários":
+        show_edicao_usuarios()
+
+# Login obrigatório
 if not st.session_state.autenticado:
     login()
     st.stop()
 
-# Sidebar de navegação
-st.set_page_config(layout="wide")
-
-# Logo no topo
-col_logo, col_title = st.columns([1, 10])
-with col_logo:
-    st.image("assets/logo_neuro.png", width=600)
-with col_title:
-    st.write("--------------------------------------")
-
-st.sidebar.title("📂 Navegação")
-pagina = st.sidebar.selectbox("Escolha uma opção", [
-    "🏠 Página Inicial",
-    "📄 Gerenciar Clientes",
-    "➕ Novo Cliente"
-])
-
-clientes = listar_clientes()
-cliente_selecionado = None
-if pagina == "📄 Gerenciar Clientes" and not clientes.empty:
-    cliente_selecionado = st.sidebar.selectbox("👤 Selecione o cliente", list(clientes['nome']))
-
-# Roteamento das páginas
-if pagina == "🏠 Página Inicial":
-    show_dashboard()
-elif pagina == "➕ Novo Cliente":
-    show_novo_cliente()
-elif pagina == "📄 Gerenciar Clientes" and cliente_selecionado:
-    show_gerenciar_cliente(cliente_selecionado)
-
-
+# Validar usuário logado
+usuario = conn.execute("SELECT * FROM login WHERE id = ?", (st.session_state.id_usuario,)).fetchone()
+if usuario:
+    privilegio = bool(usuario[3])  # assumindo que 'privilegio' é a 4ª coluna (index 3)
+    interface(privilegio, usuario)
+else:
+    st.error("Usuário não encontrado.")

@@ -4,12 +4,19 @@ from db.functions import resumo_financeiro
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from db.functions import conn
+from db.functions import conn, listar_psicologos
 
 
-def show_dashboard():
+def show_dashboard(psicologo_responsavel):
     st.title("📊 Visão Geral do Sistema")
     st.write("Resumo financeiro e de sessões por cliente.")
+    psicologos_df = listar_psicologos()
+    filtro = psicologos_df[psicologos_df['id'] == psicologo_responsavel]
+    if not filtro.empty:
+        psicologo = filtro.iloc[0]
+        st.write(f"👩🏻‍⚕️ Psicóloga Responsável: {psicologo['nome']}")
+    else:
+        st.warning("Psicóloga não encontrada.")
 
     # Filtros por mês e ano
     col1, col2 = st.columns(2)
@@ -21,7 +28,7 @@ def show_dashboard():
         print(ano)
 
     # Exibir resumo financeiro filtrado por mês e ano
-    df_resumido = resumo_financeiro(mes, ano)
+    df_resumido = resumo_financeiro(mes, ano, psicologo_responsavel)
 
     # KPIs
     total_recebido = df_resumido['total_recebido'].sum()
