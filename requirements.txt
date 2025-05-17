@@ -4,3 +4,4 @@ pandas
 fpdf
 Pillow
 plotly
+pymysql
