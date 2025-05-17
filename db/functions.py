@@ -44,7 +44,9 @@ CREATE TABLE IF NOT EXISTS sessoes (
     valor DOUBLE,
     status TEXT,
     cobrar BOOLEAN,
-    pagamento BOOLEAN,        
+    pagamento BOOLEAN,
+    nota_fiscal TEXT,
+    comentario TEXT        
 );
 """)
 
@@ -60,6 +62,7 @@ def adicionar_psicologo(nome):
 
     # Inserir novo psicologo
     conn.execute("INSERT INTO psicologos (id, nome) VALUES (?, ?)", (novo_id, nome))
+    conn.commit()
 
 def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio):
     # Verificar se o usuário já existe
@@ -73,6 +76,7 @@ def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio)
 
     # Inserir novo usuário
     conn.execute("INSERT INTO login (id, usuario, senha, funcao, psicologo_responsavel, privilegio) VALUES (?, ?, ?, ?, ?, ?)", (novo_id, usuario, senha, funcao, psicologo_responsavel, privilegio))
+    conn.commit()
 
     if funcao == "Psicóloga":
         adicionar_psicologo(usuario)
@@ -91,8 +95,9 @@ def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
     result = conn.execute("SELECT MAX(id) FROM clientes").fetchone()
     novo_id = (result[0] or 0) + 1
     conn.execute("INSERT INTO clientes (id, nome, valor_sessao, psicologo_responsavel) VALUES (?, ?, ?, ?)", (novo_id, nome, valor_sessao, psicologo_responsavel))
+    conn.commit()
 
-def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento):
+def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,comentario):
     # Verificar se sessão com data e hora para o mesmo cliente já existe
     existente = conn.execute("""
         SELECT COUNT(*) FROM sessoes
@@ -104,19 +109,33 @@ def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento):
     result = conn.execute("SELECT MAX(id) FROM sessoes").fetchone()
     novo_id = (result[0] or 0) + 1
     conn.execute("""
-        INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar, pagamento)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-    """, (novo_id, int(cliente_id), data, hora, valor, status, cobrar, pagamento))
+        INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    """, (novo_id, int(cliente_id), data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario))
+    conn.commit()
 
 def excluir_cliente(cliente_id):
     conn.execute("DELETE FROM sessoes WHERE cliente_id = ?", (int(cliente_id),))
     conn.execute("DELETE FROM clientes WHERE id = ?", (int(cliente_id),))
+    conn.commit()
 
 def excluir_sessao(sessao_id):
     conn.execute("DELETE FROM sessoes WHERE id = ?", (int(sessao_id),))
+    conn.commit()
 
-def update_sessao(sessao_id, valor):
-    conn.execute("UPDATE sessoes SET pagamento = ? WHERE id = ?", (valor,int(sessao_id)))
+def update_sessao(sessao_id, pagamento, valor, status, cobrar, nota_fiscal, comentario):
+    sql = """
+        UPDATE sessoes 
+        SET pagamento = ?, 
+            valor = ?, 
+            status = ?, 
+            cobrar = ?, 
+            nota_fiscal = ?, 
+            comentario = ?
+        WHERE id = ?
+    """
+    conn.execute(sql, (pagamento, valor, status, cobrar, nota_fiscal, comentario, int(sessao_id)))
+    conn.commit()
 
 def sessoes_por_cliente(cliente_id):
     return conn.execute("SELECT * FROM sessoes WHERE cliente_id = ?", (int(cliente_id),)).df()
