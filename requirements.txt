@@ -5,3 +5,6 @@ fpdf
 Pillow
 plotly
 pymysql
+mysqlclient==2.2.0
+SQLAlchemy==2.0.0
+streamlit>=1.28
