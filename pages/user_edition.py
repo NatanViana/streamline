@@ -16,12 +16,11 @@ def cadastro():
         privilegio = True
     else:
         psicologos = listar_psicologos()
-        print(rf"Print psicologos", psicologos)
         # Criar dicionário {nome: id}
-        psicologos_dict = {row[1]: row[0] for row in psicologos}
+        psicologos_dict = dict(zip(psicologos['nome'], psicologos['id']))
         # Usar os nomes no selectbox
         nome_selecionado = st.selectbox("Psicólogo Responsável", list(psicologos_dict.keys()))
-        # Obter o ID correspondente ao nome
+        # Obter o ID correspxondente ao nome selecionado
         psicologo_responsavel = psicologos_dict[nome_selecionado]
         privilegio = False
     if st.button("Cadastrar Usuário"):
