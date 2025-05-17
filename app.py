@@ -2,7 +2,7 @@ import streamlit as st
 from pages.dashboard import show_dashboard
 from pages.novo_cliente import show_novo_cliente
 from pages.gerenciar_cliente import show_gerenciar_cliente
-from db.functions import listar_clientes, adicionar_usuario, conn
+from db.functions import listar_clientes, select_user, validate_user
 from pages.user_edition import show_edicao_usuarios
 
 # Inicializar estados
@@ -19,11 +19,12 @@ def login():
     usuario = st.text_input("Usuário")
     senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
-        result = conn.execute("SELECT * FROM login WHERE usuario = ? AND senha = ?", (usuario, senha)).fetchone()
+        result = select_user(usuario, senha)
+        print(result)
         if result:
             st.session_state.autenticado = True
             st.session_state.usuario_logado = usuario
-            st.session_state.id_usuario = result[0]  # id está na primeira coluna
+            st.session_state.id_usuario = result["id"]  # id está na primeira coluna
             st.success("✅ Login realizado com sucesso!")
             st.rerun()
         else:
@@ -53,18 +54,18 @@ def interface(privilegio, usuario):
             "📄 Gerenciar Clientes",
             "➕ Novo Cliente"
         ])
-    psicologo_resoonsavel = usuario[4]
-    clientes = listar_clientes(psicologo_resoonsavel)
+    psicologo_responsavel = usuario["psicologo_responsavel"]
+    clientes = listar_clientes(psicologo_responsavel)
     cliente_selecionado = None
     if pagina == "📄 Gerenciar Clientes" and not clientes.empty:
         cliente_selecionado = st.sidebar.selectbox("👤 Selecione o cliente", list(clientes['nome']))
 
     if pagina == "🏠 Página Inicial":
-        show_dashboard(psicologo_resoonsavel)
+        show_dashboard(psicologo_responsavel)
     elif pagina == "➕ Novo Cliente":
-        show_novo_cliente(psicologo_resoonsavel)
+        show_novo_cliente(psicologo_responsavel)
     elif pagina == "📄 Gerenciar Clientes" and cliente_selecionado:
-        show_gerenciar_cliente(cliente_selecionado, psicologo_resoonsavel)
+        show_gerenciar_cliente(cliente_selecionado, psicologo_responsavel)
     elif pagina == "✅ Edição de Usuários":
         show_edicao_usuarios()
 
@@ -74,9 +75,9 @@ if not st.session_state.autenticado:
     st.stop()
 
 # Validar usuário logado
-usuario = conn.execute("SELECT * FROM login WHERE id = ?", (st.session_state.id_usuario,)).fetchone()
+usuario = validate_user(st.session_state.id_usuario)
 if usuario:
-    privilegio = bool(usuario[3])  # assumindo que 'privilegio' é a 4ª coluna (index 3)
+    privilegio = bool(usuario["privilegio"])
     interface(privilegio, usuario)
 else:
     st.error("Usuário não encontrado.")

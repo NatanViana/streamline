@@ -4,13 +4,14 @@ from db.functions import resumo_financeiro
 import pandas as pd
 import plotly.express as px
 from datetime import datetime
-from db.functions import conn, listar_psicologos
+from db.functions import listar_psicologos
 
 
 def show_dashboard(psicologo_responsavel):
     st.title("📊 Visão Geral do Sistema")
     st.write("Resumo financeiro e de sessões por cliente.")
     psicologos_df = listar_psicologos()
+    print("Lista de psicologos",psicologos_df)
     filtro = psicologos_df[psicologos_df['id'] == psicologo_responsavel]
     if not filtro.empty:
         psicologo = filtro.iloc[0]

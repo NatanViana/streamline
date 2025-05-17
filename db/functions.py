@@ -1,163 +1,258 @@
-# /db/functions.py
-import duckdb
+import pymysql
 import pandas as pd
 from fpdf import FPDF
-import io
+import os
+import duckdb
 
-conn = duckdb.connect(database='db/clientes.db')
+# 🔁 Cria instância DuckDB in-memory
+def get_duckdb():
+    return duckdb.connect(database=':memory:')
+    
+# 🔁 Conexão com MySQL (persistência)
+def get_mysql_conn():
+    return pymysql.connect(
+        host=os.getenv("DB_HOST"),
+        user=os.getenv("DB_USER"),
+        password=os.getenv("DB_PASS"),
+        port=int(os.getenv("DB_PORT")),
+        database=os.getenv("DB_NAME"),
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
-# Criação das tabelas (manual ID)
+def criar_tabelas():
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS psicologos (
+                    id BIGINT PRIMARY KEY,
+                    nome VARCHAR(255) NOT NULL
+                );
+            """)
 
-conn.execute("""
-CREATE TABLE IF NOT EXISTS psicologos (
-    id BIGINT PRIMARY KEY,
-    nome TEXT
-);
-""")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS login (
+                    id BIGINT PRIMARY KEY,
+                    usuario VARCHAR(100) NOT NULL UNIQUE,
+                    senha VARCHAR(255) NOT NULL,
+                    funcao VARCHAR(50) NOT NULL,
+                    psicologo_responsavel BIGINT,
+                    privilegio BOOLEAN,
+                    FOREIGN KEY (psicologo_responsavel) REFERENCES psicologos(id)
+                );
+            """)
 
-conn.execute("""
-CREATE TABLE IF NOT EXISTS login (
-    id BIGINT PRIMARY KEY,
-    usuario TEXT,
-    senha TEXT,
-    funcao TEXT,
-    psicologo_responsavel BIGINT,
-    privilegio BOOLEAN
-);
-""")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS clientes (
+                    id BIGINT PRIMARY KEY,
+                    nome VARCHAR(255) NOT NULL,
+                    valor_sessao DOUBLE NOT NULL,
+                    psicologo_responsavel BIGINT,
+                    FOREIGN KEY (psicologo_responsavel) REFERENCES psicologos(id)
+                );
+            """)
 
-conn.execute("""
-CREATE TABLE IF NOT EXISTS clientes (
-    id BIGINT PRIMARY KEY,
-    nome TEXT,
-    valor_sessao DOUBLE,
-    psicologo_responsavel BIGINT       
-);
-""")
+            cursor.execute("""
+                CREATE TABLE IF NOT EXISTS sessoes (
+                    id BIGINT PRIMARY KEY,
+                    cliente_id BIGINT,
+                    data DATE NOT NULL,
+                    hora TIME NOT NULL,
+                    valor DOUBLE NOT NULL,
+                    status VARCHAR(20) NOT NULL,
+                    cobrar BOOLEAN,
+                    pagamento BOOLEAN,
+                    nota_fiscal VARCHAR(50),
+                    comentario TEXT,
+                    FOREIGN KEY (cliente_id) REFERENCES clientes(id)
+                );
+            """)
 
-conn.execute("""
-CREATE TABLE IF NOT EXISTS sessoes (
-    id BIGINT PRIMARY KEY,
-    cliente_id BIGINT,
-    data TEXT,
-    hora TEXT,
-    valor DOUBLE,
-    status TEXT,
-    cobrar BOOLEAN,
-    pagamento BOOLEAN,
-    nota_fiscal TEXT,
-    comentario TEXT        
-);
-""")
+        conn.commit()
+
+# --------------------------------
+# INSERT / UPDATE / DELETE: MySQL
+# --------------------------------
 
 def adicionar_psicologo(nome):
-    # Verificar se o psicologo já existe
-    existente = conn.execute("SELECT COUNT(*) FROM psicologos WHERE nome = ?", (nome,)).fetchone()[0]
-    if existente:
-        raise ValueError("Psicologo já cadastrado.")
-    
-    # Gerar novo id incremental
-    result = conn.execute("SELECT MAX(id) FROM psicologos").fetchone()
-    novo_id = (result[0] or 0) + 1
-
-    # Inserir novo psicologo
-    conn.execute("INSERT INTO psicologos (id, nome) VALUES (?, ?)", (novo_id, nome))
-    conn.commit()
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM psicologos WHERE nome = %s", (nome,))
+            if cursor.fetchone()['count']:
+                raise ValueError("Psicólogo já cadastrado.")
+            cursor.execute("SELECT MAX(id) AS max_id FROM psicologos")
+            novo_id = (cursor.fetchone()['max_id'] or 0) + 1
+            cursor.execute("INSERT INTO psicologos (id, nome) VALUES (%s, %s)", (novo_id, nome))
+        conn.commit()
 
 def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio):
-    # Verificar se o usuário já existe
-    existente = conn.execute("SELECT COUNT(*) FROM login WHERE usuario = ?", (usuario,)).fetchone()[0]
-    if existente:
-        raise ValueError("Usuário já cadastrado.")
-    
-    # Gerar novo id incremental
-    result = conn.execute("SELECT MAX(id) FROM login").fetchone()
-    novo_id = (result[0] or 0) + 1
-
-    # Inserir novo usuário
-    conn.execute("INSERT INTO login (id, usuario, senha, funcao, psicologo_responsavel, privilegio) VALUES (?, ?, ?, ?, ?, ?)", (novo_id, usuario, senha, funcao, psicologo_responsavel, privilegio))
-    conn.commit()
-
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM login WHERE usuario = %s", (usuario,))
+            if cursor.fetchone()['count']:
+                raise ValueError("Usuário já cadastrado.")
+            cursor.execute("SELECT MAX(id) AS max_id FROM login")
+            novo_id = (cursor.fetchone()['max_id'] or 0) + 1
+            cursor.execute("""
+                INSERT INTO login (id, usuario, senha, funcao, psicologo_responsavel, privilegio)
+                VALUES (%s, %s, %s, %s, %s, %s)
+            """, (novo_id, usuario, senha, funcao, psicologo_responsavel, privilegio))
+        conn.commit()
     if funcao == "Psicóloga":
         adicionar_psicologo(usuario)
 
-def listar_clientes(psicologo_responsavel):
-    return conn.execute("SELECT * FROM clientes WHERE psicologo_responsavel = ? ",(psicologo_responsavel,)).df()
-
-def listar_psicologos():
-    return conn.execute("SELECT * FROM psicologos").df()
-
 def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
-    # Verificar se o cliente já existe
-    existente = conn.execute("SELECT COUNT(*) FROM clientes WHERE nome = ?", (nome,)).fetchone()[0]
-    if existente:
-        raise ValueError("Cliente já cadastrado.")
-    result = conn.execute("SELECT MAX(id) FROM clientes").fetchone()
-    novo_id = (result[0] or 0) + 1
-    conn.execute("INSERT INTO clientes (id, nome, valor_sessao, psicologo_responsavel) VALUES (?, ?, ?, ?)", (novo_id, nome, valor_sessao, psicologo_responsavel))
-    conn.commit()
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT COUNT(*) AS count FROM clientes WHERE nome = %s", (nome,))
+            if cursor.fetchone()['count']:
+                raise ValueError("Cliente já cadastrado.")
+            cursor.execute("SELECT MAX(id) AS max_id FROM clientes")
+            novo_id = (cursor.fetchone()['max_id'] or 0) + 1
+            cursor.execute("""
+                INSERT INTO clientes (id, nome, valor_sessao, psicologo_responsavel)
+                VALUES (%s, %s, %s, %s)
+            """, (novo_id, nome, valor_sessao, psicologo_responsavel))
+        conn.commit()
 
-def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,comentario):
-    # Verificar se sessão com data e hora para o mesmo cliente já existe
-    existente = conn.execute("""
-        SELECT COUNT(*) FROM sessoes
-        WHERE cliente_id = ? AND data = ? AND hora = ?
-    """, (int(cliente_id), data, hora)).fetchone()[0]
-    if existente:
-        raise ValueError("Sessão já registrada para este cliente neste horário.")
-
-    result = conn.execute("SELECT MAX(id) FROM sessoes").fetchone()
-    novo_id = (result[0] or 0) + 1
-    conn.execute("""
-        INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-    """, (novo_id, int(cliente_id), data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario))
-    conn.commit()
+def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario):
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                SELECT COUNT(*) AS count FROM sessoes
+                WHERE cliente_id = %s AND data = %s AND hora = %s
+            """, (cliente_id, data, hora))
+            if cursor.fetchone()['count']:
+                raise ValueError("Sessão já registrada para este cliente neste horário.")
+            cursor.execute("SELECT MAX(id) AS max_id FROM sessoes")
+            novo_id = (cursor.fetchone()['max_id'] or 0) + 1
+            cursor.execute("""
+                INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (novo_id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario))
+        conn.commit()
 
 def excluir_cliente(cliente_id):
-    conn.execute("DELETE FROM sessoes WHERE cliente_id = ?", (int(cliente_id),))
-    conn.execute("DELETE FROM clientes WHERE id = ?", (int(cliente_id),))
-    conn.commit()
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM sessoes WHERE cliente_id = %s", (cliente_id,))
+            cursor.execute("DELETE FROM clientes WHERE id = %s", (cliente_id,))
+        conn.commit()
 
 def excluir_sessao(sessao_id):
-    conn.execute("DELETE FROM sessoes WHERE id = ?", (int(sessao_id),))
-    conn.commit()
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("DELETE FROM sessoes WHERE id = %s", (sessao_id,))
+        conn.commit()
 
 def update_sessao(sessao_id, pagamento, valor, status, cobrar, nota_fiscal, comentario):
-    sql = """
-        UPDATE sessoes 
-        SET pagamento = ?, 
-            valor = ?, 
-            status = ?, 
-            cobrar = ?, 
-            nota_fiscal = ?, 
-            comentario = ?
-        WHERE id = ?
-    """
-    conn.execute(sql, (pagamento, valor, status, cobrar, nota_fiscal, comentario, int(sessao_id)))
-    conn.commit()
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("""
+                UPDATE sessoes 
+                SET pagamento = %s, valor = %s, status = %s, cobrar = %s,
+                    nota_fiscal = %s, comentario = %s
+                WHERE id = %s
+            """, (pagamento, valor, status, cobrar, nota_fiscal, comentario, sessao_id))
+        conn.commit()
+
+def atualizar_privilegio_usuario(id_usuario, novo_privilegio):
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "UPDATE login SET privilegio = %s WHERE id = %s",
+                (int(novo_privilegio), id_usuario)
+            )
+        conn.commit()
+
+# -------------------------------
+# SELECTs híbridos com DuckDB
+# -------------------------------
+
+def listar_clientes(psicologo_responsavel):
+    with get_mysql_conn() as conn:
+       with conn.cursor() as cursor:
+        cursor.execute("SELECT * FROM clientes WHERE psicologo_responsavel = %s",(psicologo_responsavel,))
+        rows = cursor.fetchall()  # lista de dicionários
+        df = pd.DataFrame(rows)   # transforma em DataFrame
+        return df
+
+def listar_login_privilegios():
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM login")
+            rows = cursor.fetchall()  # lista de dicionários
+            df = pd.DataFrame(rows)   # transforma em DataFrame
+            return df
+
+def select_user(usuario, senha):
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM login WHERE usuario = %s AND senha = %s", (usuario, senha))
+            return cursor.fetchone()
+    
+def validate_user(id):
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+                cursor.execute("SELECT * FROM login WHERE id = %s", (id,))
+                return cursor.fetchone()
+
+def listar_psicologos():
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM psicologos")
+            rows = cursor.fetchall()  # lista de dicionários
+            df = pd.DataFrame(rows)   # transforma em DataFrame
+            return df
 
 def sessoes_por_cliente(cliente_id):
-    return conn.execute("SELECT * FROM sessoes WHERE cliente_id = ?", (int(cliente_id),)).df()
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute("SELECT * FROM sessoes WHERE cliente_id = %s ORDER BY data DESC, hora DESC", (cliente_id,))
+            rows = cursor.fetchall()  # lista de dicionários
+            df = pd.DataFrame(rows)   # transforma em DataFrame
+            return df
+
+def get_proximo_id(tabela, campo='id'):
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(f"SELECT MAX({campo}) AS max_id FROM {tabela}")
+            resultado = cursor.fetchone()
+            return (resultado['max_id'] or 0) + 1
 
 def resumo_financeiro(mes: int, ano: int, psicologo_responsavel):
-    query = rf"""
-    SELECT 
-        c.nome,
-        COUNT(CASE WHEN s.status = 'realizada' THEN 1 END) AS sessoes_feitas,
-        COUNT(CASE WHEN s.status = 'cancelada' THEN 1 END) AS sessoes_canceladas,
-        SUM(CASE WHEN s.status = 'realizada' AND s.pagamento THEN s.valor ELSE 0 END) AS total_recebido,
-        SUM(CASE WHEN (s.status = 'cancelada' AND s.cobrar) OR (s.status = 'realizada' AND NOT s.pagamento) THEN s.valor ELSE 0 END) AS total_a_receber
-    FROM clientes c
-    LEFT JOIN sessoes s 
-        ON c.id = s.cliente_id
-    WHERE
-        strftime('%m', CAST(s.data AS DATE)) = lpad(?, 2, '0') 
-        AND strftime('%Y', CAST(s.data AS DATE)) = ?
-        AND psicologo_responsavel = ?
-    GROUP BY c.nome
-    """
-    return conn.execute(query, (str(mes), str(ano), psicologo_responsavel)).df()
+    with get_mysql_conn() as conn:
+        query = """
+            SELECT 
+                c.nome,
+                COUNT(CASE WHEN s.status = 'realizada' THEN 1 END) AS sessoes_feitas,
+                COUNT(CASE WHEN s.status = 'cancelada' THEN 1 END) AS sessoes_canceladas,
+                SUM(CASE WHEN s.status = 'realizada' AND s.pagamento THEN s.valor ELSE 0 END) AS total_recebido,
+                SUM(CASE WHEN (s.status = 'cancelada' AND s.cobrar) OR 
+                          (s.status = 'realizada' AND NOT s.pagamento) THEN s.valor ELSE 0 END) AS total_a_receber
+            FROM clientes c
+            LEFT JOIN sessoes s ON c.id = s.cliente_id
+            WHERE 
+                MONTH(s.data) = %s AND
+                YEAR(s.data) = %s AND
+                c.psicologo_responsavel = %s
+            GROUP BY c.nome
+        """
+        with conn.cursor() as cursor:
+            cursor.execute(query, (mes, ano, psicologo_responsavel))
+            rows = cursor.fetchall()
+
+            # Define os nomes esperados das colunas
+            colunas = ['nome', 'sessoes_feitas', 'sessoes_canceladas', 'total_recebido', 'total_a_receber']
+
+            if not rows:
+                return pd.DataFrame(columns=colunas)
+            else:
+                return pd.DataFrame(rows, columns=colunas)
+        
+
+# -----------------------
+# PDF (inalterado)
+# -----------------------
 
 def gerar_pdf(df, cliente_nome):
     pdf = FPDF()
@@ -167,7 +262,6 @@ def gerar_pdf(df, cliente_nome):
     pdf.ln(10)
 
     colunas = df.columns.tolist()
-    col_widths = [30] * len(colunas)
 
     for col in colunas:
         pdf.cell(30, 10, col, border=1)
@@ -179,5 +273,7 @@ def gerar_pdf(df, cliente_nome):
             pdf.cell(30, 10, texto[:15], border=1)
         pdf.ln()
 
-    # ✅ Retorna PDF como bytes diretamente
     return pdf.output(dest='S').encode('latin1')
+
+
+criar_tabelas()

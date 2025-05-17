@@ -4,7 +4,6 @@ from datetime import datetime
 import pandas as pd
 from fpdf import FPDF
 from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos
-import io
 import time
 
 def gerar_horarios():

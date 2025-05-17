@@ -1,8 +1,6 @@
 # /pages/dashboard.py
 import streamlit as st
-import pandas as pd
-from datetime import datetime
-from db.functions import conn, adicionar_usuario
+from db.functions import adicionar_usuario, get_proximo_id, listar_psicologos, listar_login_privilegios, atualizar_privilegio_usuario
 
 
 # Função cadastro
@@ -13,12 +11,11 @@ def cadastro():
     funcao = st.selectbox("Função", ['Assistente', 'Psicóloga'])
     if funcao == 'Psicóloga':
         # Gerar novo id incremental
-        result = conn.execute("SELECT MAX(id) FROM psicologos").fetchone()
-        novo_id = (result[0] or 0) + 1
+        novo_id = get_proximo_id("psicologos")
         psicologo_responsavel = novo_id
         privilegio = True
     else:
-        psicologos = conn.execute("SELECT DISTINCT id ,nome FROM psicologos").fetchall()
+        psicologos = listar_psicologos()
         # Criar dicionário {nome: id}
         psicologos_dict = {row[1]: row[0] for row in psicologos}
 
@@ -40,7 +37,7 @@ def cadastro():
 
 # Função de conceder privilégio
 def conceder_privilegio():
-    usuarios = conn.execute("SELECT id, usuario, privilegio FROM login").fetchall()
+    usuarios = listar_login_privilegios()
 
     if not usuarios:
         st.warning("Nenhum usuário cadastrado.")
@@ -58,8 +55,7 @@ def conceder_privilegio():
     )
 
     if st.button("💾 Atualizar Privilégio"):
-        conn.execute("UPDATE login SET privilegio = ? WHERE id = ?", (int(novo_privilegio), id_usuario))
-        conn.commit()
+        atualizar_privilegio_usuario(id_usuario,novo_privilegio)
         st.success("✅ Privilégio atualizado com sucesso.")
         st.rerun()
 
