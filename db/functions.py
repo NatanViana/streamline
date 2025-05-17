@@ -11,8 +11,14 @@ def get_duckdb():
     
 # 🔁 Conexão com MySQL (persistência)
 def get_mysql_conn():
-    conn = st.connection("mysql", type="sql")
-    return conn
+    return pymysql.connect(
+        host=os.getenv("host"),
+        user=os.getenv("username"),
+        password=os.getenv("password"),
+        port=int(os.getenv("port")),
+        database=os.getenv("database"),
+        cursorclass=pymysql.cursors.DictCursor
+    )
 
 def criar_tabelas():
     with get_mysql_conn() as conn:
