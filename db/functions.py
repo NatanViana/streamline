@@ -3,6 +3,7 @@ import pandas as pd
 from fpdf import FPDF
 import os
 import duckdb
+import streamlit as st
 
 # 🔁 Cria instância DuckDB in-memory
 def get_duckdb():
@@ -10,14 +11,8 @@ def get_duckdb():
     
 # 🔁 Conexão com MySQL (persistência)
 def get_mysql_conn():
-    return pymysql.connect(
-        host=os.getenv("DB_HOST"),
-        user=os.getenv("DB_USER"),
-        password=os.getenv("DB_PASS"),
-        port=int(os.getenv("DB_PORT")),
-        database=os.getenv("DB_NAME"),
-        cursorclass=pymysql.cursors.DictCursor
-    )
+    conn = st.connection("mysql", type="sql")
+    return conn
 
 def criar_tabelas():
     with get_mysql_conn() as conn:
