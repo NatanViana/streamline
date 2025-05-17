@@ -165,25 +165,31 @@ def atualizar_privilegio_usuario(id_usuario, novo_privilegio):
             )
         conn.commit()
 
-# -------------------------------
-# SELECTs híbridos com DuckDB
-# -------------------------------
-
 def listar_clientes(psicologo_responsavel):
     with get_mysql_conn() as conn:
        with conn.cursor() as cursor:
         cursor.execute("SELECT * FROM clientes WHERE psicologo_responsavel = %s",(psicologo_responsavel,))
         rows = cursor.fetchall()  # lista de dicionários
-        df = pd.DataFrame(rows)   # transforma em DataFrame
-        return df
+       # Define os nomes esperados das colunas
+        colunas = ["id","nome","valor_sessao","psicologo_responsavel"]
+
+        if not rows:
+            return pd.DataFrame(columns=colunas)
+        else:
+            return pd.DataFrame(rows, columns=colunas)
 
 def listar_login_privilegios():
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM login")
             rows = cursor.fetchall()  # lista de dicionários
-            df = pd.DataFrame(rows)   # transforma em DataFrame
-            return df
+            # Define os nomes esperados das colunas
+            colunas = ["id","usuario","senha","funcao","psicologo_responsavel","privilegio"]
+
+            if not rows:
+                return pd.DataFrame(columns=colunas)
+            else:
+                return pd.DataFrame(rows, columns=colunas)
 
 def select_user(usuario, senha):
     with get_mysql_conn() as conn:
@@ -202,16 +208,27 @@ def listar_psicologos():
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM psicologos")
             rows = cursor.fetchall()  # lista de dicionários
-            df = pd.DataFrame(rows)   # transforma em DataFrame
-            return df
+            # Define os nomes esperados das colunas
+            colunas = ['id', "nome"]
+
+            if not rows:
+                return pd.DataFrame(columns=colunas)
+            else:
+                return pd.DataFrame(rows, columns=colunas)
 
 def sessoes_por_cliente(cliente_id):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT * FROM sessoes WHERE cliente_id = %s ORDER BY data DESC, hora DESC", (cliente_id,))
             rows = cursor.fetchall()  # lista de dicionários
-            df = pd.DataFrame(rows)   # transforma em DataFrame
-            return df
+
+            # Define os nomes esperados das colunas
+            colunas = ["id","cliente_id","data","hora","valor","status","cobrar","pagamento","nota_fiscal","comentario"]
+
+            if not rows:
+                return pd.DataFrame(columns=colunas)
+            else:
+                return pd.DataFrame(rows, columns=colunas)
 
 def get_proximo_id(tabela, campo='id'):
     with get_mysql_conn() as conn:
