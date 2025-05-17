@@ -34,27 +34,33 @@ def cadastro():
         except ValueError as e:
             st.error(f"Erro: {e}")
 
-# Função de conceder privilégio
 def conceder_privilegio():
-    usuarios = listar_login_privilegios()
+    usuarios = listar_login_privilegios()  # Deve retornar um DataFrame
 
-    if not usuarios:
+    if usuarios.empty:
         st.warning("Nenhum usuário cadastrado.")
         return
 
-    opcoes = [f"{row[0]} - {row[1]} (Privilégio: {'✅' if row[2] else '❌'})" for row in usuarios]
+    # Cria as opções do selectbox com base no DataFrame
+    opcoes = [
+        f"{row['id']} - {row['login']} (Privilégio: {'✅' if row['privilegio'] else '❌'})"
+        for _, row in usuarios.iterrows()
+    ]
     usuario_selecionado = st.selectbox("Selecione o usuário", opcoes)
 
+    # Extrai o ID do usuário selecionado
     id_usuario = int(usuario_selecionado.split(" - ")[0])
-    usuario_row = [u for u in usuarios if u[0] == id_usuario][0]
+    
+    # Filtra o DataFrame pelo ID selecionado
+    usuario_row = usuarios[usuarios['id'] == id_usuario].iloc[0]
 
     novo_privilegio = st.checkbox(
         "Conceder Privilégio (Administrador)?",
-        value=bool(usuario_row[2])
+        value=bool(usuario_row['privilegio'])
     )
 
     if st.button("💾 Atualizar Privilégio"):
-        atualizar_privilegio_usuario(id_usuario,novo_privilegio)
+        atualizar_privilegio_usuario(id_usuario, novo_privilegio)
         st.success("✅ Privilégio atualizado com sucesso.")
         st.rerun()
 
