@@ -210,15 +210,17 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
 
                 elif uploaded_file and not nome_personalizado:
                     st.warning("⚠️ Por favor, informe um nome para o arquivo antes de enviar.")
-
+                
                 # Mostrar arquivos já enviados
                 st.markdown("**📄 Documentos salvos:**")
-                arquivos = listar_arquivos_do_cliente(bucket_name, f"{pasta_cliente}/")
 
-                arquivos_filtrados = [blob for blob in arquivos if blob.name.startswith(f"{pasta_cliente}/{tipo}_") and blob.name.endswith(".pdf")]
+                # Caminho correto: dentro da subpasta do tipo (ex: "joao_123/Laudos/")
+                prefixo_busca = f"{pasta_cliente}/{tipo}/"
+                arquivos = listar_arquivos_do_cliente(bucket_name, prefixo_busca)
 
-                if arquivos_filtrados:
-                    for blob in arquivos_filtrados:
+                # Nenhum filtro extra necessário — GCS já retorna só os arquivos dessa "pasta"
+                if arquivos:
+                    for blob in arquivos:
                         arquivo_nome = blob.name.split("/")[-1]
                         nome_amigavel = arquivo_nome.replace(f"{tipo}_", "").replace("_", " ")
                         conteudo = blob.download_as_bytes()
