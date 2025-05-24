@@ -1,9 +1,10 @@
 # Arquivos sensíveis de banco
-.*db
-/db/.*db
+*.db
 .streamlit/secrets.toml
 .*pyc
 *.pem
 *.key
 db/server-ca.pem
 init_db.sql
+*.env
+GCS_KEY.json

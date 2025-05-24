@@ -3,7 +3,7 @@ import streamlit as st
 from datetime import datetime
 import pandas as pd
 from fpdf import FPDF
-from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos
+from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos, upload_para_gcs, listar_arquivos_do_cliente, manual_load_dotenv
 import time
 import os
 import json
@@ -183,8 +183,8 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
         st.subheader("📁 Documentos do Cliente")
 
         tipos = ["Questionários", "Testes Corrigidos", "Laudos", "Contrato"]
-        pasta_cliente = f"documentos/{cliente_nome}_{cliente_id}" # Mudar para buckets do Cloud Storage
-        os.makedirs(pasta_cliente, exist_ok=True)
+        bucket_name = os.getenv("GCS_BUCKET_NAME")
+        pasta_cliente = f"{cliente_nome}"  # usado como prefixo no GCS
 
         for tipo in tipos:
             with st.expander(f"📂 {tipo}"):
@@ -203,33 +203,32 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
                     nome_limpo = nome_personalizado.strip().replace(" ", "_")
                     extensao = os.path.splitext(uploaded_file.name)[1]
                     nome_final = f"{tipo}_{nome_limpo}{extensao}"
-                    save_path = os.path.join(pasta_cliente, nome_final)
+                    blob_path = f"{pasta_cliente}/{tipo}/{nome_final}"
 
-                    with open(save_path, "wb") as f:
-                        f.write(uploaded_file.read())
-
-                    st.success(f"{tipo} salvo como: {nome_final}")
+                    url = upload_para_gcs(bucket_name, blob_path, uploaded_file)
+                    st.success(f"{tipo} enviado para o bucket como: {nome_final}")
 
                 elif uploaded_file and not nome_personalizado:
                     st.warning("⚠️ Por favor, informe um nome para o arquivo antes de enviar.")
 
-                # Mostrar arquivos existentes
+                # Mostrar arquivos já enviados
                 st.markdown("**📄 Documentos salvos:**")
-                arquivos = sorted([
-                    f for f in os.listdir(pasta_cliente)
-                    if f.startswith(tipo) and f.endswith(".pdf")
-                ])
+                arquivos = listar_arquivos_do_cliente(bucket_name, f"{pasta_cliente}/")
 
-                if arquivos:
-                    for arquivo in arquivos:
-                        caminho = os.path.join(pasta_cliente, arquivo)
-                        with open(caminho, "rb") as f:
-                            st.download_button(
-                                label=f"⬇️ {arquivo.replace(tipo + '_', '').replace('_', ' ')}",
-                                data=f.read(),
-                                file_name=arquivo,
-                                mime="application/pdf"
-                            )
+                arquivos_filtrados = [blob for blob in arquivos if blob.name.startswith(f"{pasta_cliente}/{tipo}_") and blob.name.endswith(".pdf")]
+
+                if arquivos_filtrados:
+                    for blob in arquivos_filtrados:
+                        arquivo_nome = blob.name.split("/")[-1]
+                        nome_amigavel = arquivo_nome.replace(f"{tipo}_", "").replace("_", " ")
+                        conteudo = blob.download_as_bytes()
+
+                        st.download_button(
+                            label=f"⬇️ {nome_amigavel}",
+                            data=conteudo,
+                            file_name=arquivo_nome,
+                            mime="application/pdf"
+                        )
                 else:
                     st.info("Nenhum documento enviado ainda.")
 

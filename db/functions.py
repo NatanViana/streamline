@@ -8,8 +8,46 @@ import ssl
 import base64
 import tempfile
 from functools import lru_cache
+from google.cloud import storage
 
+def manual_load_dotenv(path="db/env.env"):
+    if not os.path.exists(path):
+        print("Arquivo inexistente")
+        return
 
+    with open(path) as f:
+        for line in f:
+            if line.strip() and not line.startswith("#"):
+                key, value = line.strip().split("=", 1)
+                os.environ[key] = value
+               
+# rodar no Localhost
+#manual_load_dotenv()
+#print("Host do banco:", os.getenv("GCS_KEY_BASE64"))
+
+@lru_cache(maxsize=1)
+def get_gcs_client():
+    key_base64 = os.getenv("GCS_KEY_BASE64")
+    print(key_base64)
+    key_bytes = base64.b64decode(key_base64)
+
+    with tempfile.NamedTemporaryFile(delete=False) as temp_key:
+        temp_key.write(key_bytes)
+        temp_key_path = temp_key.name
+
+    return storage.Client.from_service_account_json(temp_key_path)
+
+def upload_para_gcs(bucket_name, blob_path, uploaded_file):
+    client = get_gcs_client()
+    bucket = client.bucket(bucket_name)
+    blob = bucket.blob(blob_path)
+    blob.upload_from_file(uploaded_file, rewind=True)
+    return f"gs://{bucket_name}/{blob_path}"
+
+def listar_arquivos_do_cliente(bucket_name, prefixo):
+    client = get_gcs_client()
+    bucket = client.bucket(bucket_name)
+    return list(bucket.list_blobs(prefix=prefixo))
 
 # 🔐 Cria um contexto SSL a partir do certificado codificado em base64
 @lru_cache(maxsize=1)
