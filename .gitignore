@@ -6,3 +6,4 @@
 *.pem
 *.key
 db/server-ca.pem
+init_db.sql

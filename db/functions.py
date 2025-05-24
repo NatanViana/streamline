@@ -4,21 +4,47 @@ from fpdf import FPDF
 import os
 import duckdb
 import streamlit as st
+import ssl
+import base64
+import tempfile
+from functools import lru_cache
+
+
+
+# 🔐 Cria um contexto SSL a partir do certificado codificado em base64
+@lru_cache(maxsize=1)
+def get_ssl_context_from_secrets():
+    ca_base64 = os.getenv("MYSQL_SSL_CA_BASE64")  # ou use st.secrets["MYSQL_SSL_CA_BASE64"]
+    ca_bytes = base64.b64decode(ca_base64)
+
+    # Salva em arquivo temporário
+    with tempfile.NamedTemporaryFile(delete=False) as ca_file:
+        ca_file.write(ca_bytes)
+        ca_path = ca_file.name
+
+    # Configura contexto SSL
+    ssl_context = ssl.create_default_context(cafile=ca_path)
+    ssl_context.check_hostname = False
+    ssl_context.verify_mode = ssl.CERT_REQUIRED
+    return ssl_context
+
 
 # 🔁 Cria instância DuckDB in-memory
 def get_duckdb():
     return duckdb.connect(database=':memory:')
-    
 # 🔁 Conexão com MySQL (persistência)
 def get_mysql_conn():
+    ssl_ctx = get_ssl_context_from_secrets()
     return pymysql.connect(
         host=os.getenv("host"),
         user=os.getenv("username"),
         password=os.getenv("password"),
         port=int(os.getenv("port")),
         database=os.getenv("database"),
-        cursorclass=pymysql.cursors.DictCursor
+        cursorclass=pymysql.cursors.DictCursor,
+        ssl={'ssl': ssl_ctx}
     )
+
 
 def criar_tabelas():
     with get_mysql_conn() as conn:
