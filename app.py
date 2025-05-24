@@ -58,7 +58,17 @@ def interface(privilegio, usuario):
     clientes = listar_clientes(psicologo_responsavel)
     cliente_selecionado = None
     if pagina == "📄 Gerenciar Clientes" and not clientes.empty:
-        cliente_selecionado = st.sidebar.selectbox("👤 Selecione o cliente", list(clientes['nome']))
+        nome_busca = st.sidebar.text_input("🔎 Buscar cliente por nome")
+
+        nomes_filtrados = clientes[clientes['nome'].str.contains(nome_busca, case=False, na=False)] if nome_busca else clientes
+
+        if nomes_filtrados.empty:
+            st.sidebar.warning("Nenhum cliente encontrado com esse nome.")
+        else:
+            cliente_selecionado = st.sidebar.selectbox(
+                "👤 Selecione o cliente", 
+                list(nomes_filtrados['nome'])
+            )
 
     if pagina == "🏠 Página Inicial":
         show_dashboard(psicologo_responsavel)

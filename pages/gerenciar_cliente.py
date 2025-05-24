@@ -5,6 +5,8 @@ import pandas as pd
 from fpdf import FPDF
 from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos
 import time
+import os
+import json
 
 def gerar_horarios():
         horarios = []
@@ -48,20 +50,74 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
     cliente = clientes[clientes['nome'] == cliente_nome].iloc[0]
     cliente_id = int(cliente['id'])
     psicologos_df = listar_psicologos()
-    filtro = psicologos_df[psicologos_df['id'] == psicologo_responsavel]
-    if not filtro.empty:
-        psicologo = filtro.iloc[0]
-    else:
-        st.warning("Psicóloga não encontrada.")
+    psicologo = psicologos_df[psicologos_df['id'] == psicologo_responsavel].iloc[0] if not psicologos_df.empty else {}
 
-    if not clientes.empty:
-        st.title(f"🧑 Cliente: {cliente_nome}")
-        st.write(f"👩🏻‍⚕️ Psicóloga Responsavel: {psicologo['nome']}")
-        if st.button("❌ Excluir Cliente"):
+    st.title(f"🧑 Cliente: {cliente_nome}")
+    st.write(f"👩🏻‍⚕️ Psicóloga Responsável: {psicologo.get('nome', 'N/A')}")
+
+    with st.expander("⚠️ Excluir Cliente"):
+        st.warning("Esta ação é irreversível. Todos os dados do cliente serão removidos.")
+        confirmar = st.checkbox(f"Confirmo que desejo excluir o cliente: {cliente_nome}")
+
+        if confirmar and st.button("❌ Excluir Cliente Permanentemente"):
             excluir_cliente(cliente_id)
             st.success(f"Cliente {cliente_nome} excluído com sucesso.")
             st.session_state['pagina'] = "🏠 Página Inicial"
             st.rerun()
+
+    
+
+    st.subheader("📊 Indicadores do Cliente")
+    sessoes = sessoes_por_cliente(cliente_id)
+    sessoes['data'] = pd.to_datetime(sessoes['data'])
+    if pd.api.types.is_timedelta64_dtype(sessoes['hora']):
+        sessoes['hora'] = sessoes['hora'].apply(lambda td: (pd.Timestamp('00:00:00') + td).time())
+        
+    col1, col2 = st.columns(2)
+    with col1:
+        mes = st.selectbox("📅 Mês", list(range(1, 13)), index=datetime.now().month - 1)
+    with col2:
+        anos_disponiveis = sessoes['data'].dt.year.unique().tolist()
+        ano = st.selectbox("📆 Ano", sorted(anos_disponiveis, reverse=True) if anos_disponiveis else [datetime.now().year])
+
+    sessoes_filtradas = sessoes[(sessoes['data'].dt.month == mes) & (sessoes['data'].dt.year == ano)]
+
+    # Certifique-se de que a coluna `hora` está sendo convertida corretamente
+    sessoes_filtradas['hora'] = pd.to_datetime(sessoes_filtradas['hora'].astype(str)).dt.time
+
+    sessoes_realizadas = sessoes_filtradas[sessoes_filtradas['status'] == "realizada"]
+    sessoes_canceladas = sessoes_filtradas[sessoes_filtradas['status'] == "cancelada"]
+    
+    total_pagamento = sessoes_realizadas[sessoes_realizadas['pagamento'] != 0]['valor'].sum()
+    total_pendente = sessoes_realizadas[sessoes_realizadas['pagamento']== 0]['valor'].sum() + sessoes_canceladas[sessoes_canceladas['cobrar'] == 1]['valor'].sum()
+
+    col1, col2, col3, col4 = st.columns(4)
+    col1.metric("✅ Realizadas", len(sessoes_realizadas))
+    col2.metric("❌ Canceladas", len(sessoes_canceladas))
+    col3.metric("💰 Recebido", f"R$ {total_pagamento:.2f}")
+    col4.metric("🕗 Pendente", f"R$ {total_pendente:.2f}")
+
+    # CSS para ajustar largura dos tabs
+    st.markdown("""
+        <style>
+        .stTabs [role="tablist"] {
+            justify-content: space-around;
+        }
+        .stTabs [data-baseweb="tab"] {
+            flex: 1 1 30%;
+            max-width: 30%;
+            min-width: 30%;
+            text-align: center;
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    tabs = st.tabs([ "📅 Sessões", "📁 Prontuários", "📝 Avaliação"])
+
+   
+
+    # Sessões
+    with tabs[0]:
 
         st.markdown("### 🗓️ Registrar Nova Sessão")
 
@@ -71,6 +127,7 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
                 data = st.date_input("📅 Data", datetime.today())
                 horarios = gerar_horarios()
                 hora = st.selectbox("🕒 Hora", horarios)
+                hora = datetime.strptime(hora, "%H:%M").time()  # <- converte para tipo time
             with col2:
                 valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
                 status = st.selectbox("📌 Status", ["realizada", "cancelada"])
@@ -79,23 +136,12 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
             nota_fiscal = st.text_input("📑 Nota Fiscal (Comece com NF-)", "NF-")
             comentario = st.text_area("🗒️ Comentário da Sessão", "")
 
-            salvar = st.form_submit_button("📂 Salvar Sessão")
-            if salvar:
+            if st.form_submit_button("📂 Salvar Sessão"):
                 if not nota_fiscal.startswith("NF-"):
                     st.error("Nota Fiscal deve iniciar com 'NF-'")
                 else:
                     try:
-                        adicionar_sessao(
-                            cliente_id,
-                            str(data),
-                            str(hora),
-                            valor,
-                            status,
-                            cobrar,
-                            pagamento,
-                            nota_fiscal,
-                            comentario
-                        )
+                        adicionar_sessao(cliente_id, str(data), hora, valor, status, cobrar, pagamento, nota_fiscal, comentario)
                         st.success(f"Sessão em {data} às {hora} registrada com sucesso!")
                         time.sleep(0.5)
                         st.rerun()
@@ -103,27 +149,13 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
                         st.error(str(e))
 
         st.markdown("### 📅 Sessões Registradas")
-        sessoes = sessoes_por_cliente(cliente_id)
-        sessoes['data'] = pd.to_datetime(sessoes['data'])
-
-        col1, col2 = st.columns(2)
-        with col1:
-            mes = st.selectbox("📅 Mês", list(range(1, 13)), index=datetime.now().month - 1)
-        with col2:
-            anos_disponiveis = sessoes['data'].dt.year.unique().tolist()
-            ano = st.selectbox("📆 Ano", sorted(anos_disponiveis, reverse=True) if anos_disponiveis else [datetime.now().year])
-
-        sessoes_filtradas = sessoes[
-            (sessoes['data'].dt.month == mes) &
-            (sessoes['data'].dt.year == ano)
-        ]
-
+        
         for _, row in sessoes_filtradas.iterrows():
-            with st.expander(f"📍 {row['data'].date()} às {row['hora']} - {row['status']}"):
-                novo_valor = st.number_input(f"💵 Valor", min_value=0.0, value=row['valor'], key=f"valor_{row['id']}")
-                novo_status = st.selectbox(f"📌 Status", ["realizada", "cancelada"], index=["realizada", "cancelada"].index(row['status']), key=f"status_{row['id']}")
-                novo_cobrar = st.checkbox(f"💸 Cobrar se cancelada", value=row['cobrar'], key=f"cobrar_{row['id']}")
-                novo_pagamento = st.checkbox(f"✅ Pago", value=row['pagamento'], key=f"pago_{row['id']}")
+            with st.expander(f"📍 {row['data'].date()} às {(row['hora']).strftime('%H:%M')} - {row['status']}"):
+                novo_valor = st.number_input("💵 Valor", min_value=0.0, value=row['valor'], key=f"valor_{row['id']}")
+                novo_status = st.selectbox("📌 Status", ["realizada", "cancelada"], index=["realizada", "cancelada"].index(row['status']), key=f"status_{row['id']}")
+                novo_cobrar = st.checkbox("💸 Cobrar se cancelada", value=row['cobrar'], key=f"cobrar_{row['id']}")
+                novo_pagamento = st.checkbox("✅ Pago", value=row['pagamento'], key=f"pago_{row['id']}")
                 nova_nf = st.text_input("📑 Nota Fiscal", value=row.get('nota_fiscal', 'NF-'), key=f"nf_{row['id']}")
                 novo_comentario = st.text_area("🗒️ Comentário", value=row.get('comentario', ''), key=f"coment_{row['id']}")
 
@@ -131,15 +163,7 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
                     if not nova_nf.startswith("NF-"):
                         st.error("Nota Fiscal deve iniciar com 'NF-'")
                     else:
-                        update_sessao(
-                            row['id'],
-                            novo_pagamento,
-                            novo_valor,
-                            novo_status,
-                            novo_cobrar,
-                            nova_nf,
-                            novo_comentario
-                        )
+                        update_sessao(row['id'], novo_pagamento, novo_valor, novo_status, novo_cobrar, nova_nf, novo_comentario)
                         st.success("Sessão atualizada com sucesso.")
                         st.rerun()
 
@@ -153,6 +177,73 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
 
         pdf_bytes = gerar_pdf_texto(sessoes_filtradas, cliente_nome, mes, ano)
         st.download_button("📄 Exportar PDF", pdf_bytes, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.pdf", mime='application/pdf')
-    else:
-        st.write(f"👩🏻‍⚕️ Psicóloga Responsavel: {psicologo['nome']}")
-        st.info("Não existem clientes cadastrados na base de dados do psicólogo responsável")
+
+    # Prontuários
+    with tabs[1]:
+        st.subheader("📁 Documentos do Cliente")
+
+        tipos = ["Questionários", "Testes Corrigidos", "Laudos", "Contrato"]
+        pasta_cliente = f"documentos/{cliente_nome}_{cliente_id}" # Mudar para buckets do Cloud Storage
+        os.makedirs(pasta_cliente, exist_ok=True)
+
+        for tipo in tipos:
+            with st.expander(f"📂 {tipo}"):
+                st.markdown("**Enviar novo documento:**")
+                nome_personalizado = st.text_input(f"Nome do arquivo ({tipo})", key=f"{tipo}_nome")
+
+                uploaded_file = st.file_uploader(
+                    f"Arraste ou selecione um arquivo PDF para {tipo}",
+                    type=["pdf"],
+                    key=f"{tipo}_upload"
+                )
+
+                submissao = st.button("✅ Submeter", key=f"button_{tipo}_nome")
+
+                if uploaded_file and nome_personalizado and submissao:
+                    nome_limpo = nome_personalizado.strip().replace(" ", "_")
+                    extensao = os.path.splitext(uploaded_file.name)[1]
+                    nome_final = f"{tipo}_{nome_limpo}{extensao}"
+                    save_path = os.path.join(pasta_cliente, nome_final)
+
+                    with open(save_path, "wb") as f:
+                        f.write(uploaded_file.read())
+
+                    st.success(f"{tipo} salvo como: {nome_final}")
+
+                elif uploaded_file and not nome_personalizado:
+                    st.warning("⚠️ Por favor, informe um nome para o arquivo antes de enviar.")
+
+                # Mostrar arquivos existentes
+                st.markdown("**📄 Documentos salvos:**")
+                arquivos = sorted([
+                    f for f in os.listdir(pasta_cliente)
+                    if f.startswith(tipo) and f.endswith(".pdf")
+                ])
+
+                if arquivos:
+                    for arquivo in arquivos:
+                        caminho = os.path.join(pasta_cliente, arquivo)
+                        with open(caminho, "rb") as f:
+                            st.download_button(
+                                label=f"⬇️ {arquivo.replace(tipo + '_', '').replace('_', ' ')}",
+                                data=f.read(),
+                                file_name=arquivo,
+                                mime="application/pdf"
+                            )
+                else:
+                    st.info("Nenhum documento enviado ainda.")
+
+    # Avaliação
+    with tabs[2]:
+        st.subheader("📝 Avaliações Clínicas")
+        data_avaliacao = st.date_input("📅 Data da Avaliação", datetime.today())
+        tags = st.text_input("🔖 Tags (ex: ansiedade, evolução positiva)")
+        texto = st.text_area("📋 Descrição da Avaliação")
+
+        if st.button("💾 Salvar Avaliação"):
+            avaliacao = {"data": str(data_avaliacao), "tags": tags, "descricao": texto}
+            path = f"avaliacoes/{cliente_id}.json"
+            os.makedirs("avaliacoes", exist_ok=True)
+            with open(path, "a") as f:
+                f.write(json.dumps(avaliacao) + "\n")
+            st.success("Avaliação salva com sucesso.")
