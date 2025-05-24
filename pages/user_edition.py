@@ -1,13 +1,25 @@
 # /pages/dashboard.py
 import streamlit as st
 from db.functions import adicionar_usuario, get_proximo_id, listar_psicologos, listar_login_privilegios, atualizar_privilegio_usuario
+import re
 
+# validar senha
+def senha_valida(senha):
+    return (
+        len(senha) >= 8 and
+        re.search(r"[A-Z]", senha) and
+        re.search(r"[a-z]", senha) and
+        re.search(r"[0-9]", senha) and
+        re.search(r"[!@#$%^&*(),.?\":{}|<>]", senha)
+    )
 
 # Função cadastro
 def cadastro():
     st.info("📝 Cadastro de Novo Usuário (Necessário Psicólogo Responsável)")
     novo_usuario = st.text_input("Novo Usuário")
     nova_senha = st.text_input("Nova Senha", type="password")
+    if not senha_valida(nova_senha):
+       st.warning("⚠️ Senha deve obedecer critérios de segurança.")
     funcao = st.selectbox("Função", ['Assistente', 'Psicóloga'])
     if funcao == 'Psicóloga':
         # Gerar novo id incremental
@@ -25,8 +37,8 @@ def cadastro():
         privilegio = False
     if st.button("Cadastrar Usuário"):
         try:
-            if not novo_usuario or not nova_senha or not psicologo_responsavel:
-                st.warning("⚠️ Preencha todos os campos.")
+            if not novo_usuario or not nova_senha or not psicologo_responsavel or not senha_valida(nova_senha):
+                st.warning("⚠️ Preencha todos os campos corretamente.")
             else:
                 adicionar_usuario(novo_usuario, nova_senha, funcao, psicologo_responsavel, privilegio)
                 st.success(f"✅ Usuário {novo_usuario} cadastrado com sucesso!")
