@@ -1,4 +1,8 @@
+# Arquivos sensíveis de banco
 .*db
 /db/.*db
 .streamlit/secrets.toml
 .*pyc
+*.pem
+*.key
+db/server-ca.pem
