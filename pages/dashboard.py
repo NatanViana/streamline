@@ -11,7 +11,7 @@ def show_dashboard(psicologo_responsavel):
     st.title("📊 Visão Geral do Sistema")
     st.write("Resumo financeiro e de sessões por cliente.")
     psicologos_df = listar_psicologos()
-    print("Lista de psicologos",psicologos_df)
+    #print("Lista de psicologos",psicologos_df)
     filtro = psicologos_df[psicologos_df['id'] == psicologo_responsavel]
     if not filtro.empty:
         psicologo = filtro.iloc[0]
@@ -23,10 +23,10 @@ def show_dashboard(psicologo_responsavel):
     col1, col2 = st.columns(2)
     with col1:
         mes = st.selectbox("📅 Mês", list(range(1, 13)), index=datetime.now().month - 1)
-        print(mes)
+        #print(mes)
     with col2:
         ano = st.selectbox("📆 Ano", list(range(2023, datetime.now().year + 1)), index = len(list(range(2023, datetime.now().year + 1)))-1)
-        print(ano)
+        #print(ano)
 
     # Exibir resumo financeiro filtrado por mês e ano
     df_resumido = resumo_financeiro(mes, ano, psicologo_responsavel)

@@ -28,7 +28,7 @@ def manual_load_dotenv(path="db/env.env"):
 @lru_cache(maxsize=1)
 def get_gcs_client():
     key_base64 = os.getenv("GCS_KEY_BASE64")
-    print(key_base64)
+    #print(key_base64)
     key_bytes = base64.b64decode(key_base64)
 
     with tempfile.NamedTemporaryFile(delete=False) as temp_key:
@@ -127,7 +127,13 @@ def criar_tabelas():
                     cobrar BOOLEAN,
                     pagamento BOOLEAN,
                     nota_fiscal VARCHAR(50),
-                    comentario TEXT,
+                    conteudo TEXT,
+                    objetivo TEXT,
+                    material TEXT,
+                    atividade_casa TEXT,
+                    emocao_entrada BIGINT,
+                    emocao_saida BIGINT,
+                    proxima_sessao TEXT,
                     FOREIGN KEY (cliente_id) REFERENCES clientes(id)
                 );
             """)
@@ -179,7 +185,7 @@ def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
             """, (novo_id, nome, valor_sessao, psicologo_responsavel))
         conn.commit()
 
-def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario):
+def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -188,12 +194,20 @@ def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, n
             """, (cliente_id, data, hora))
             if cursor.fetchone()['count']:
                 raise ValueError("Sessão já registrada para este cliente neste horário.")
+            
             cursor.execute("SELECT MAX(id) AS max_id FROM sessoes")
             novo_id = (cursor.fetchone()['max_id'] or 0) + 1
+            
             cursor.execute("""
-                INSERT INTO sessoes (id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            """, (novo_id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal, comentario))
+                INSERT INTO sessoes (
+                    id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,
+                    conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao
+                )
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            """, (
+                novo_id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,
+                conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao
+            ))
         conn.commit()
 
 def excluir_cliente(cliente_id):
@@ -209,15 +223,31 @@ def excluir_sessao(sessao_id):
             cursor.execute("DELETE FROM sessoes WHERE id = %s", (sessao_id,))
         conn.commit()
 
-def update_sessao(sessao_id, pagamento, valor, status, cobrar, nota_fiscal, comentario):
+def update_sessao(sessao_id, pagamento, valor, status, cobrar, nota_fiscal,
+                  conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
                 UPDATE sessoes 
-                SET pagamento = %s, valor = %s, status = %s, cobrar = %s,
-                    nota_fiscal = %s, comentario = %s
+                SET pagamento = %s,
+                    valor = %s,
+                    status = %s,
+                    cobrar = %s,
+                    nota_fiscal = %s,
+                    conteudo = %s,
+                    objetivo = %s,
+                    material = %s,
+                    atividade_casa = %s,
+                    emocao_entrada = %s,
+                    emocao_saida = %s,
+                    proxima_sessao = %s
                 WHERE id = %s
-            """, (pagamento, valor, status, cobrar, nota_fiscal, comentario, sessao_id))
+            """, (
+                pagamento, valor, status, cobrar, nota_fiscal,
+                conteudo, objetivo, material, atividade_casa,
+                emocao_entrada, emocao_saida, proxima_sessao,
+                sessao_id
+            ))
         conn.commit()
 
 def atualizar_privilegio_usuario(id_usuario, novo_privilegio):
@@ -283,11 +313,20 @@ def listar_psicologos():
 def sessoes_por_cliente(cliente_id):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT * FROM sessoes WHERE cliente_id = %s ORDER BY data DESC, hora DESC", (cliente_id,))
+            cursor.execute("""
+                SELECT * FROM sessoes 
+                WHERE cliente_id = %s 
+                ORDER BY data DESC, hora DESC
+            """, (cliente_id,))
             rows = cursor.fetchall()  # lista de dicionários
 
-            # Define os nomes esperados das colunas
-            colunas = ["id","cliente_id","data","hora","valor","status","cobrar","pagamento","nota_fiscal","comentario"]
+            # Lista atualizada com todas as colunas da tabela
+            colunas = [
+                "id", "cliente_id", "data", "hora", "valor", "status",
+                "cobrar", "pagamento", "nota_fiscal", "conteudo", "objetivo",
+                "material", "atividade_casa", "emocao_entrada", "emocao_saida",
+                "proxima_sessao"
+            ]
 
             if not rows:
                 return pd.DataFrame(columns=colunas)
