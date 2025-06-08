@@ -1,9 +1,10 @@
 import streamlit as st
-from pages.dashboard import show_dashboard
-from pages.novo_cliente import show_novo_cliente
-from pages.gerenciar_cliente import show_gerenciar_cliente
+from paginas.dashboard import show_dashboard
+from paginas.novo_cliente import show_novo_cliente
+from paginas.gerenciar_cliente import show_gerenciar_cliente
 from db.functions import listar_clientes, select_user, validate_user
-from pages.user_edition import show_edicao_usuarios
+from paginas.user_edition import show_edicao_usuarios
+import base64
 
 # Inicializar estados
 if "autenticado" not in st.session_state:
@@ -13,9 +14,31 @@ if "usuario_logado" not in st.session_state:
 if "id_usuario" not in st.session_state:
     st.session_state.id_usuario = None
 
+image_path = "assets/logo_neuro_sem_bk.png"
+
+# Carrega e converte a imagem em base64
+def process_base64_img(image_path):
+    with open(image_path, "rb") as image_file:
+        encoded = base64.b64encode(image_file.read()).decode()
+        return encoded
+
 # Função login
 def login():
-    st.title("🔐 Login do Sistema")
+    st.set_page_config(page_title="Neuropsicoclínica",
+    page_icon="🧠"  # ou uma imagem customizada (veja abaixo)
+    )
+    image_base64 = process_base64_img(image_path)
+    # Exibe a imagem centralizada com HTML
+    st.markdown(
+        f"""
+        <div style="text-align: center;">
+            <img src="data:image/png;base64,{image_base64}" width="300"/>
+        </div>
+        <hr style="margin-top: 20px; margin-bottom: 20px; border: 0.5px solid #ccc;"/>
+        """,
+        unsafe_allow_html=True
+    )
+    st.subheader("🔐 Login do Sistema")
     usuario = st.text_input("Usuário")
     senha = st.text_input("Senha", type="password")
     if st.button("Entrar"):
@@ -33,10 +56,12 @@ def login():
 
 # Interface principal
 def interface(privilegio, usuario):
-    st.set_page_config(layout="wide")
+    st.set_page_config(page_title="Neuropsicoclínica",
+    page_icon="🧠",  # ou uma imagem customizada (veja abaixo)
+    layout="wide")
     col_logo, col_title = st.columns([1, 10])
     with col_logo:
-        st.image("assets/logo_neuro.png", width=600)
+        st.image("assets/logo_neuro_sem_bk.png", width=600)
     with col_title:
         st.write("--------------------------------------")
 
