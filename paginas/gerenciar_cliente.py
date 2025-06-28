@@ -8,6 +8,12 @@ import time
 import os
 import json
 
+MESES_PT = {
+    "1": "Janeiro", "2": "Fevereiro", "3": "Março", "4": "Abril",
+    "5": "Maio", "6": "Junho", "7": "Julho", "8": "Agosto",
+    "9": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
+    }   
+
 def gerar_horarios():
         horarios = []
         for h in range(0, 24):
@@ -15,49 +21,170 @@ def gerar_horarios():
                 horarios.append(f"{h:02d}:{m:02d}")
         return horarios
 
+
+
+class PDF(FPDF):
+    def header(self):
+        self.set_fill_color(14, 43, 58)
+        self.rect(0, 0, self.w, self.h, 'F')
+
+        if self.page_no() == 1:
+            logo_width = 150
+            x_center = (self.w - logo_width) / 2
+            y_center = (self.h - logo_width) / 2 - 30
+            self.image("assets/logo_neuro_sem_bk.png", x=x_center, y=y_center, w=logo_width)
+            self.logo_bottom_y = y_center + logo_width + 10
+        else:
+            logo_width = 35
+            x_centered = (self.w - logo_width) / 2
+            self.image("assets/logo_neuro_sem_bk.png", x=x_centered, y=10, w=logo_width)
+            self.ln(logo_width + 0)
+
+    def footer(self):
+        if self.page_no() == 1:
+            return
+        self.set_y(-15)
+        self.set_font("Arial", "I", 8)
+        self.set_text_color(240, 240, 240)
+        self.cell(0, 10, f"Página {self.page_no() - 1}", align="C")
+
 def gerar_pdf_texto(sessoes, cliente_nome, mes, ano, finalidade):
-    pdf = FPDF()
+    MESES_PT = {
+        "1": "Janeiro", "2": "Fevereiro", "3": "Março", "4": "Abril",
+        "5": "Maio", "6": "Junho", "7": "Julho", "8": "Agosto",
+        "9": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
+    }
+
+    mes_nome = MESES_PT.get(str(int(mes)), "Mês Inválido")
+    pdf = PDF(format="A4")
+    pdf.set_auto_page_break(auto=True, margin=15)
     pdf.add_page()
-    pdf.set_font("Arial", size=12)
-    pdf.cell(200, 10, txt=f"Relatório de Sessões - {cliente_nome}      |     {mes}/{ano}", ln=True, align='C')
-    pdf.ln(10)
+
+    # Capa
+    pdf.set_text_color(255, 255, 255)
+    pdf.set_font("Arial", "B", 22)
+    pdf.set_y(pdf.h - 70)
+    pdf.cell(0, 10, f"Relatório de Sessões - {cliente_nome}", ln=True, align="C")
+
+    pdf.set_y(pdf.h - 40)
+    pdf.set_font("Arial", "", 16)
+    pdf.cell(0, 10, f"{mes_nome} de {ano}", ln=True, align="C")
+
+    # Página de sessões
+    pdf.add_page()
 
     for i, (_, row) in enumerate(sessoes.iterrows(), start=1):
         hora_formatada = row['hora'][:5] if isinstance(row['hora'], str) else str(row['hora'])[:5]
-        
-        pdf.set_font("Arial", style='B', size=12)
-        pdf.cell(200, 10, txt=f"Sessão {i}", ln=True)
-        pdf.set_font("Arial", size=12)
-        pdf.cell(200, 10, txt=f"Data: {row['data'].date()} | Hora: {hora_formatada}", ln=True)
-        pdf.cell(200, 10, txt=f"Valor: R$ {row['valor']:.2f}", ln=True)
+
+        # Título centralizado
+        pdf.set_font("Arial", "B", 12)
+        pdf.set_text_color(247, 215, 145)
+        pdf.cell(0, 10, f"Sessão {i}", ln=True, align="C")
+
+        # Tabela centralizada
+        pdf.set_fill_color(38, 64, 78)
+        pdf.set_draw_color(60, 90, 110)
+        pdf.set_text_color(255, 255, 255)
+
+        campos = [
+            ("Data", str(row['data'].date())),
+            ("Hora", hora_formatada),
+            ("Valor", f"R$ {row['valor']:.2f}"),
+            ("Status", row['status']),
+            ("Pendente", "Não" if row['pagamento'] else "Sim"),
+            ("Nota Fiscal", row.get("nota_fiscal") or "NF- N/D")
+        ]
         if finalidade != 'Cliente':
-            pdf.cell(200, 10, txt=f"Status: {row['status']} | Cobrar se cancelada: {'Sim' if row['cobrar'] else 'Não'}", ln=True)
-        else:
-            pdf.cell(200, 10, txt=f"Status: {row['status']}", ln=True)
-        pdf.cell(200, 10, txt=f"Pendente de Pagamento: {'Sim' if row['pagamento'] else 'Não'}", ln=True)
+            campos.insert(4, ("Cobrar Cancelado", "Sim" if row['cobrar'] else "Não"))
 
-        # Nota Fiscal
-        nota_fiscal = row.get('nota_fiscal') or 'NF- N/D'
-        pdf.cell(200, 10, txt=f"Nota Fiscal: {nota_fiscal}", ln=True)
+        col_width = 70
+        x_margin = (pdf.w - 2 * col_width) / 2
+        cell_height = 7
+
+        for label, valor in campos:
+            pdf.set_x(x_margin)
+            pdf.set_font("Arial", "B", 9)
+            pdf.cell(col_width, cell_height, f"{label}:", border=1, fill=True)
+            pdf.set_font("Arial", "", 9)
+            pdf.cell(col_width, cell_height, str(valor), border=1, ln=True, fill=True, align="C")
+
+        # Diário
         if finalidade != 'Cliente':
-            pdf.cell(200, 10, txt=f"--------- Diário de Sessão ----------------", ln=True)
+            pdf.ln(2)
+            pdf.set_font("Arial", "B", 10)
+            pdf.set_text_color(255, 255, 255)
+            pdf.cell(0, 8, "Diário de Sessão", ln=True, align="C")
 
-            # Campos adicionais
-            pdf.multi_cell(0, 10, txt=f"Conteúdo: {row.get('conteudo') or 'Não registrado'}")
-            pdf.multi_cell(0, 10, txt=f"Objetivo: {row.get('objetivo') or 'Não registrado'}")
-            pdf.multi_cell(0, 10, txt=f"Material: {row.get('material') or 'Não registrado'}")
-            pdf.multi_cell(0, 10, txt=f"Atividade para Casa: {row.get('atividade_casa') or 'Não registrada'}")
-            
-            entrada = row.get('emocao_entrada')
-            saida = row.get('emocao_saida')
-            pdf.cell(200, 10, txt=f"Emoção Entrada: {entrada if entrada is not None else 'N/D'} | Emoção Saída: {saida if saida is not None else 'N/D'}", ln=True)
+            emocoes = {
+                1: "Triste",
+                2: "Chateado",
+                3: "Neutro",
+                4: "Contente",
+                5: "Feliz"
+            }
 
-            pdf.multi_cell(0, 10, txt=f"Próxima Sessão: {row.get('proxima_sessao') or 'Não registrada'}")
+            entrada_val = row.get("emocao_entrada")
+            saida_val = row.get("emocao_saida")
 
-        pdf.cell(200, 10, txt=f"-----------------------------------------", ln=True)
-        pdf.ln(5)
+            entrada_desc = emocoes.get(int(entrada_val), "N/D") if pd.notnull(entrada_val) else "N/D"
+            saida_desc = emocoes.get(int(saida_val), "N/D") if pd.notnull(saida_val) else "N/D"
 
-    return pdf.output(dest='S').encode('latin1')
+            blocos = [
+                ("Conteúdo", row.get("conteudo") or "Não registrado"),
+                ("Objetivo", row.get("objetivo") or "Não registrado"),
+                ("Material", row.get("material") or "Não registrado"),
+                ("Ativ. Casa", row.get("atividade_casa") or "Não registrada"),
+                ("Emoção Entrada", entrada_desc),
+                ("Emoção Saída", saida_desc),
+                ("Próxima Sessão", row.get("proxima_sessao") or "Não registrada")
+            ]
+
+            # Tabela centralizada
+            pdf.set_fill_color(38, 64, 78)
+            pdf.set_draw_color(60, 90, 110)
+            pdf.set_text_color(255, 255, 255)
+
+            for label, valor in blocos:
+                pdf.set_x(x_margin)
+                pdf.set_font("Arial", "B", 9)
+                pdf.cell(col_width, 6, f"{label}:", border=1, fill=True)
+                pdf.set_font("Arial", "", 9)
+                pdf.multi_cell(col_width, 6, str(valor), border=1, fill=True, align="C")
+
+        pdf.ln(8)
+
+    # Página final com estatísticas
+    pdf.add_page()
+    
+    # Garantir strings e números corretamente interpretados
+    sessoes["status"] = sessoes["status"].astype(str)
+    sessoes["pagamento"] = sessoes["pagamento"].astype(int)
+
+    # Filtragem correta
+    sessoes_feitas = sessoes[sessoes["status"].str.lower() == "realizada"]
+    sessoes_nao_feitas = sessoes[sessoes["status"].str.lower() == "cancelada"]
+
+    # Cálculos
+    valor_total = sessoes_feitas["valor"].sum()
+    valor_pago = sessoes_feitas[sessoes_feitas["pagamento"] == 1]["valor"].sum()
+    valor_pendente = sessoes_feitas[sessoes_feitas["pagamento"] == 0]["valor"].sum()
+
+    # Título
+    pdf.set_font("Arial", "B", 16)
+    pdf.set_text_color(247, 215, 145)
+    pdf.cell(0, 10, "Estatísticas do Mês", ln=True, align="C")
+    pdf.ln(10)
+
+    # Texto
+    pdf.set_font("Arial", "", 12)
+    pdf.set_text_color(255, 255, 255)
+    pdf.cell(0, 8, f"Número de sessões feitas: {len(sessoes_feitas)}", ln=True, align="C")
+    pdf.cell(0, 8, f"Número de sessões canceladas: {len(sessoes_nao_feitas)}", ln=True, align="C")
+    pdf.cell(0, 8, f"Valor total: R$ {valor_total:.2f}", ln=True, align="C")
+    pdf.cell(0, 8, f"Valor pago: R$ {valor_pago:.2f}", ln=True, align="C")
+    pdf.cell(0, 8, f"Valor pendente: R$ {valor_pendente:.2f}", ln=True, align="C")
+
+    return pdf.output(dest="S").encode("latin1")
 
 def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
     clientes = listar_clientes(psicologo_responsavel)
