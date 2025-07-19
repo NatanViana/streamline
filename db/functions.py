@@ -156,6 +156,10 @@ def adicionar_psicologo(nome):
         conn.commit()
 
 def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio):
+
+    if funcao == "Psicóloga":
+        adicionar_psicologo(usuario)
+
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) AS count FROM login WHERE usuario = %s", (usuario,))
@@ -168,8 +172,7 @@ def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio)
                 VALUES (%s, %s, %s, %s, %s, %s)
             """, (novo_id, usuario, senha, funcao, psicologo_responsavel, privilegio))
         conn.commit()
-    if funcao == "Psicóloga":
-        adicionar_psicologo(usuario)
+    
 
 def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
     with get_mysql_conn() as conn:
