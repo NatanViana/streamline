@@ -149,6 +149,7 @@ def adicionar_psicologo(nome):
         with conn.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) AS count FROM psicologos WHERE nome = %s", (nome,))
             if cursor.fetchone()['count']:
+                # mantém o comportamento anterior (lança erro ao tentar criar duplicado)
                 raise ValueError("Psicólogo já cadastrado.")
             cursor.execute("SELECT MAX(id) AS max_id FROM psicologos")
             novo_id = (cursor.fetchone()['max_id'] or 0) + 1
@@ -156,23 +157,75 @@ def adicionar_psicologo(nome):
         conn.commit()
 
 def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio):
-
-    if funcao == "Psicóloga":
-        adicionar_psicologo(usuario)
-
+    """
+    - Se o login já existir e funcao == 'Psicóloga': PROMOVE (update) o usuário existente,
+      sem alterar a senha; define psicologo_responsavel = próprio id de psicóloga e privilegio=1.
+    - Se o login já existir e funcao != 'Psicóloga': lança 'Usuário já cadastrado.'
+    - Se não existir: cria normalmente; para Psicóloga, garante o id próprio de psicóloga e usa como responsável.
+    """
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
-            cursor.execute("SELECT COUNT(*) AS count FROM login WHERE usuario = %s", (usuario,))
-            if cursor.fetchone()['count']:
-                raise ValueError("Usuário já cadastrado.")
+            # Existe algum login com esse usuario?
+            cursor.execute("SELECT * FROM login WHERE usuario = %s LIMIT 1", (usuario,))
+            existente = cursor.fetchone()
+
+            # Helper: get-or-create de psicólogo usando a MESMA conexão/cursor
+            def _get_or_create_psicologo_id(nome: str) -> int:
+                cursor.execute("SELECT id FROM psicologos WHERE nome = %s LIMIT 1", (nome,))
+                row = cursor.fetchone()
+                if row:
+                    return row["id"]
+                # cria novo id pelo seu padrão MAX+1
+                cursor.execute("SELECT MAX(id) AS max_id FROM psicologos")
+                novo_pid = (cursor.fetchone()["max_id"] or 0) + 1
+                cursor.execute("INSERT INTO psicologos (id, nome) VALUES (%s, %s)", (novo_pid, nome))
+                return novo_pid
+
+            if existente:
+                # Usuário já existe
+                if funcao == "Psicóloga":
+                    # 1) Garante/Cria psicóloga com esse nome (mesma conexão!)
+                    psicologo_id = _get_or_create_psicologo_id(usuario)
+
+                    # 2) PROMOÇÃO: atualiza o login existente (NÃO altera senha)
+                    cursor.execute("""
+                        UPDATE login
+                           SET funcao = 'Psicóloga',
+                               psicologo_responsavel = %s,
+                               privilegio = 1
+                         WHERE id = %s
+                    """, (psicologo_id, existente['id']))
+                    conn.commit()
+                    return
+                else:
+                    # Mantém regra atual para duplicidade de assistente (ou outra função)
+                    raise ValueError("Usuário já cadastrado.")
+
+            # --- Novo usuário (não existia) ---
+            if funcao == "Psicóloga":
+                # Garante/Cria psicóloga e usa o próprio id como responsável (mesma conexão!)
+                psicologo_id = _get_or_create_psicologo_id(usuario)
+                psicologo_responsavel_final = psicologo_id
+            else:
+                # Assistente: usa o responsável vindo do front (validação mínima)
+                if not psicologo_responsavel:
+                    raise ValueError("Selecione o Psicólogo responsável.")
+                psicologo_responsavel_final = psicologo_responsavel
+
+            # Gera novo id para login (mantendo seu padrão MAX+1)
             cursor.execute("SELECT MAX(id) AS max_id FROM login")
             novo_id = (cursor.fetchone()['max_id'] or 0) + 1
+
+            # Criação exige senha; se vier vazia/None, rejeita
+            if senha is None or str(senha).strip() == "":
+                raise ValueError("Senha obrigatória para criação de novo usuário.")
+
             cursor.execute("""
                 INSERT INTO login (id, usuario, senha, funcao, psicologo_responsavel, privilegio)
                 VALUES (%s, %s, %s, %s, %s, %s)
-            """, (novo_id, usuario, senha, funcao, psicologo_responsavel, privilegio))
+            """, (novo_id, usuario, senha, funcao, psicologo_responsavel_final, privilegio))
+
         conn.commit()
-    
 
 def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
     with get_mysql_conn() as conn:
