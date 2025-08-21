@@ -402,9 +402,9 @@ def resumo_financeiro(mes: int, ano: int, psicologo_responsavel):
             SELECT 
                 c.nome,
                 COUNT(CASE WHEN s.status = 'realizada' THEN 1 END) AS sessoes_feitas,
-                COUNT(CASE WHEN s.status = 'cancelada' THEN 1 END) AS sessoes_canceladas,
+                COUNT(CASE WHEN s.status = 'falta' THEN 1 END) AS sessoes_faltas,
                 SUM(CASE WHEN s.status = 'realizada' AND s.pagamento THEN s.valor ELSE 0 END) AS total_recebido,
-                SUM(CASE WHEN (s.status = 'cancelada' AND s.cobrar) OR 
+                SUM(CASE WHEN (s.status = 'falta' AND s.cobrar) OR 
                           (s.status = 'realizada' AND NOT s.pagamento) THEN s.valor ELSE 0 END) AS total_a_receber
             FROM clientes c
             LEFT JOIN sessoes s ON c.id = s.cliente_id
@@ -419,7 +419,7 @@ def resumo_financeiro(mes: int, ano: int, psicologo_responsavel):
             rows = cursor.fetchall()
 
             # Define os nomes esperados das colunas
-            colunas = ['nome', 'sessoes_feitas', 'sessoes_canceladas', 'total_recebido', 'total_a_receber']
+            colunas = ['nome', 'sessoes_feitas', 'sessoes_faltas', 'total_recebido', 'total_a_receber']
 
             if not rows:
                 return pd.DataFrame(columns=colunas)

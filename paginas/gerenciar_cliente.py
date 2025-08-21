@@ -90,7 +90,7 @@ def gerar_pdf_texto(sessoes, cliente_nome, mes, ano, finalidade):
             ("Data", str(row['data'].date())),
             ("Hora", hora_formatada),
             ("Valor", f"R$ {row['valor']:.2f}"),
-            ("Status", row['status']),
+            ("Status", row['status'].capitalize()),
             ("Pendente", "Não" if row['pagamento'] else "Sim"),
             ("Nota Fiscal", row.get("nota_fiscal") or "NF- N/D")
         ]
@@ -156,18 +156,28 @@ def gerar_pdf_texto(sessoes, cliente_nome, mes, ano, finalidade):
     # Página final com estatísticas
     pdf.add_page()
     
-    # Garantir strings e números corretamente interpretados
-    sessoes["status"] = sessoes["status"].astype(str)
+    # Garantir tipos
+    sessoes["status"] = sessoes["status"].astype(str).str.strip()
     sessoes["pagamento"] = sessoes["pagamento"].astype(int)
+    sessoes["cobrar"] = sessoes["cobrar"].astype(int)
+    sessoes["valor"] = pd.to_numeric(sessoes["valor"], errors="coerce").fillna(0)
 
-    # Filtragem correta
-    sessoes_feitas = sessoes[sessoes["status"].str.lower() == "realizada"]
-    sessoes_nao_feitas = sessoes[sessoes["status"].str.lower() == "cancelada"]
+    # Filtragem correta 
+    sessoes_feitas = sessoes[sessoes["status"].str.lower() == "realizada"] 
+    sessoes_nao_feitas = sessoes[sessoes["status"].str.lower() == "falta"]
 
-    # Cálculos
-    valor_total = sessoes_feitas["valor"].sum()
-    valor_pago = sessoes_feitas[sessoes_feitas["pagamento"] == 1]["valor"].sum()
-    valor_pendente = sessoes_feitas[sessoes_feitas["pagamento"] == 0]["valor"].sum()
+    # Máscaras
+    feitas = sessoes["status"].str.lower() == "realizada"
+    nao_feitas_cobrar = (sessoes["status"].str.lower() == "falta") & (sessoes["cobrar"] == 1)
+
+    # 1) valor_total = (feitas) OU (não feitas com cobrar=1)
+    valor_total = sessoes.loc[feitas | nao_feitas_cobrar, "valor"].sum()
+
+    # 2) valor_pago = todas as sessões com pagamento=1
+    valor_pago = sessoes.loc[sessoes["pagamento"] == 1, "valor"].sum()
+
+    # 3) valor_pendente = (feitas OU não feitas com cobrar=1) e pagamento=0
+    valor_pendente = sessoes.loc[(feitas | nao_feitas_cobrar) & (sessoes["pagamento"] == 0), "valor"].sum()
 
     # Título
     pdf.set_font("Arial", "B", 16)
@@ -179,7 +189,7 @@ def gerar_pdf_texto(sessoes, cliente_nome, mes, ano, finalidade):
     pdf.set_font("Arial", "", 12)
     pdf.set_text_color(255, 255, 255)
     pdf.cell(0, 8, f"Número de sessões feitas: {len(sessoes_feitas)}", ln=True, align="C")
-    pdf.cell(0, 8, f"Número de sessões canceladas: {len(sessoes_nao_feitas)}", ln=True, align="C")
+    pdf.cell(0, 8, f"Número de faltas: {len(sessoes_nao_feitas)}", ln=True, align="C")
     pdf.cell(0, 8, f"Valor total: R$ {valor_total:.2f}", ln=True, align="C")
     pdf.cell(0, 8, f"Valor pago: R$ {valor_pago:.2f}", ln=True, align="C")
     pdf.cell(0, 8, f"Valor pendente: R$ {valor_pendente:.2f}", ln=True, align="C")
@@ -227,14 +237,14 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
     sessoes_filtradas['hora'] = pd.to_datetime(sessoes_filtradas['hora'].astype(str)).dt.time
 
     sessoes_realizadas = sessoes_filtradas[sessoes_filtradas['status'] == "realizada"]
-    sessoes_canceladas = sessoes_filtradas[sessoes_filtradas['status'] == "cancelada"]
+    sessoes_faltas = sessoes_filtradas[sessoes_filtradas['status'] == "falta"]
     
     total_pagamento = sessoes_realizadas[sessoes_realizadas['pagamento'] != 0]['valor'].sum()
-    total_pendente = sessoes_realizadas[sessoes_realizadas['pagamento']== 0]['valor'].sum() + sessoes_canceladas[sessoes_canceladas['cobrar'] == 1]['valor'].sum()
+    total_pendente = sessoes_realizadas[sessoes_realizadas['pagamento']== 0]['valor'].sum() + sessoes_faltas[sessoes_faltas['cobrar'] == 1]['valor'].sum()
 
     col1, col2, col3, col4 = st.columns(4)
     col1.metric("✅ Realizadas", len(sessoes_realizadas))
-    col2.metric("❌ Canceladas", len(sessoes_canceladas))
+    col2.metric("❌ Faltas", len(sessoes_faltas))
     col3.metric("💰 Recebido", f"R$ {total_pagamento:.2f}")
     col4.metric("🕗 Pendente", f"R$ {total_pendente:.2f}")
 
@@ -270,8 +280,8 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
                 hora = datetime.strptime(hora, "%H:%M").time()
             with col2:
                 valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
-                status = st.selectbox("📌 Status", ["realizada", "cancelada"])
-                cobrar = st.checkbox("💸 Cobrar se cancelada", value=False)
+                status = st.selectbox("📌 Status", ["realizada", "falta"])
+                cobrar = st.checkbox("💸 Cobrança de falta", value=False)
                 pagamento = st.checkbox("💸 Pago", value=False)
 
             nota_fiscal = st.text_input("📑 Nota Fiscal (Comece com NF-)", "NF-")
@@ -321,8 +331,8 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
         for _, row in sessoes_filtradas.iterrows():
             with st.expander(f"📍 {row['data'].date()} às {(row['hora']).strftime('%H:%M')} - {row['status']}"):
                 novo_valor = st.number_input("💵 Valor", min_value=0.0, value=row['valor'], key=f"valor_{row['id']}")
-                novo_status = st.selectbox("📌 Status", ["realizada", "cancelada"], index=["realizada", "cancelada"].index(row['status']), key=f"status_{row['id']}")
-                novo_cobrar = st.checkbox("💸 Cobrar se cancelada", value=row['cobrar'], key=f"cobrar_{row['id']}")
+                novo_status = st.selectbox("📌 Status", ["realizada", "falta"], index=["realizada", "falta"].index(row['status']), key=f"status_{row['id']}")
+                novo_cobrar = st.checkbox("💸 Cobrança de falta", value=row['cobrar'], key=f"cobrar_{row['id']}")
                 novo_pagamento = st.checkbox("✅ Pago", value=row['pagamento'], key=f"pago_{row['id']}")
                 nova_nf = st.text_input("📑 Nota Fiscal", value=row.get('nota_fiscal', 'NF-'), key=f"nf_{row['id']}")
 
@@ -367,7 +377,7 @@ def show_gerenciar_cliente(cliente_nome, psicologo_responsavel):
         #st.download_button("⬇️ Exportar CSV", csv, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.csv", mime='text/csv')
 
         st.markdown("### 🗓️ Exportar relatório mensal de sessões")
-        finalidade = st.selectbox("Escolha para quem será o relatório de sessão...",['Cliente','Psicólogo'])
+        finalidade = st.selectbox("Escolha para quem será o relatório de sessão:",['Cliente','Psicólogo'])
         pdf_bytes = gerar_pdf_texto(sessoes_filtradas, cliente_nome, mes, ano, finalidade)
         st.download_button("📄 Exportar PDF", pdf_bytes, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.pdf", mime='application/pdf')
     

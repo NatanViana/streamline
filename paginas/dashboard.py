@@ -35,12 +35,12 @@ def show_dashboard(psicologo_responsavel):
     total_recebido = df_resumido['total_recebido'].sum()
     total_pendente = df_resumido['total_a_receber'].sum()
     total_sessoes = df_resumido['sessoes_feitas'].sum()
-    total_canceladas = df_resumido['sessoes_canceladas'].sum()
+    total_faltas = df_resumido['sessoes_faltas'].sum()
 
     col1, col2, col3 = st.columns(3)
     col1.metric("💰 Total Recebido", f"R$ {total_recebido:,.2f}")
     col2.metric("🧾 Total Pendente", f"R$ {total_pendente:,.2f}")
-    col3.metric("📊 Sessões do Mês", f"{total_sessoes} feitas / {total_canceladas} canceladas")
+    col3.metric("📊 Sessões do Mês", f"{total_sessoes} Feitas / {total_faltas} Faltas")
 
     # Gráfico interativo com Plotly: Recebido vs Pendente
     st.subheader("📈 Financeiro - Recebido vs Pendente")
