@@ -85,7 +85,6 @@ def interface(privilegio, usuario):
     else:
         psicologo_responsavel = st.session_state.psicologo_responsavel
         clientes = st.session_state._clientes
-        cliente_selecionado = None
 
         col_logo, col_title = st.columns([1, 10])
         with col_logo:
@@ -107,6 +106,15 @@ def interface(privilegio, usuario):
                 "📄 Gerenciar Clientes",
                 "➕ Novo Cliente"
             ])
+
+        if pagina == "🏠 Página Inicial":
+            show_dashboard(psicologo_responsavel)
+        elif pagina == "➕ Novo Cliente":
+            show_novo_cliente(psicologo_responsavel)
+        elif pagina == "📄 Gerenciar Clientes":
+            show_gerenciar_cliente(psicologo_responsavel)
+        elif pagina == "✅ Edição de Usuários":
+            show_edicao_usuarios()
 
         if "logout_triggered" not in st.session_state:
             st.session_state.logout_triggered = False
@@ -135,15 +143,6 @@ def interface(privilegio, usuario):
             time.sleep(2)
             st.session_state.logout_triggered = False
             st.rerun()
-
-        if pagina == "🏠 Página Inicial":
-            show_dashboard(psicologo_responsavel)
-        elif pagina == "➕ Novo Cliente":
-            show_novo_cliente(psicologo_responsavel)
-        elif pagina == "📄 Gerenciar Clientes":
-            show_gerenciar_cliente(psicologo_responsavel)
-        elif pagina == "✅ Edição de Usuários":
-            show_edicao_usuarios()
 
 # ✅ Página de Política de Privacidade (query: ?page=politica_de_privacidade)
 if pagina_atual == "politica_de_privacidade":

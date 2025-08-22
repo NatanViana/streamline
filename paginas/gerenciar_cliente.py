@@ -2,18 +2,149 @@
 import streamlit as st
 from datetime import datetime
 import pandas as pd
-from fpdf import FPDF
-from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos, upload_para_gcs, listar_arquivos_do_cliente, manual_load_dotenv, update_sessao_data_hora, atualizar_nome_cliente
+from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos, upload_para_gcs, listar_arquivos_do_cliente, manual_load_dotenv, update_sessao_data_hora, atualizar_nome_cliente, gerar_pdf_pendencias, gerar_pdf_texto
 import time
 import os
 import json
 import unicodedata
+
 
 MESES_PT = {
     "1": "Janeiro", "2": "Fevereiro", "3": "Março", "4": "Abril",
     "5": "Maio", "6": "Junho", "7": "Julho", "8": "Agosto",
     "9": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
     }   
+
+
+# Utils bonitinhas
+def _human_size(n):
+    for unit in ["B", "KB", "MB", "GB", "TB"]:
+        if n < 1024:
+            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
+        n /= 1024
+    return f"{n:.1f} PB"
+
+def _pretty_dt(dt):
+    try:
+        return dt.strftime("%d %b %Y, %H:%M")
+    except Exception:
+        return "-"
+
+def render_lista_arquivos(bucket_name, pasta_cliente, tipo):
+    with st.expander(f"📂 {tipo}", expanded=True):
+        # --- CSS para os "cards"
+        st.markdown("""
+        <style>
+        .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+        .file-card {
+            border: 1px solid rgba(0,0,0,0.06);
+            border-radius: 16px;
+            padding: 14px;
+            background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(250,250,252,0.9));
+            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
+            transition: transform .12s ease, box-shadow .12s ease;
+        }
+        .file-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
+        .file-title { font-weight: 600; font-size: 0.98rem; margin: 0 0 4px 0; line-height: 1.25; }
+        .file-meta { color: #6b7280; font-size: 12.5px; margin-bottom: 10px; }
+        .file-pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#374151; background:#EEF2FF; padding:6px 10px; border-radius:999px; }
+        .file-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
+        .file-actions { display:flex; gap:8px; }
+        .btn-outline {
+            border: 1px solid #E5E7EB; background: white; border-radius: 10px; padding: 8px 10px; font-size: 12.5px;
+            cursor: pointer;
+        }
+        .btn-outline:hover { background: #F9FAFB; }
+        </style>
+        """, unsafe_allow_html=True)
+
+        st.markdown("**📄 Documentos salvos**")
+
+        # Barra de busca + ordenação
+        c1, c2, c3 = st.columns([2, 1, 1])
+        with c1:
+            termo = st.text_input("Pesquisar pelo nome", placeholder="Ex.: laudo, recibo, contrato…")
+        with c2:
+            criterio = st.selectbox("Ordenar por", ["Nome", "Data", "Tamanho"], index=1)
+        with c3:
+            reverso = st.toggle("Desc", value=True, help="Ordem decrescente")
+
+        prefixo_busca = f"{pasta_cliente}/{tipo}/"
+        blobs = listar_arquivos_do_cliente(bucket_name, prefixo_busca)
+
+        if not blobs:
+            st.info("Nenhum documento enviado ainda.")
+            return
+
+        # Normalizar dados
+        items = []
+        for blob in blobs:
+            nome_full = blob.name.split("/")[-1]
+            nome_amigavel = nome_full.replace(f"{tipo}_", "").replace("_", " ")
+            # Alguns clientes do GCS têm atributos diferentes; tratamos defensivamente
+            tamanho = getattr(blob, "size", None) or len(blob.download_as_bytes())
+            atualizado = getattr(blob, "updated", None)
+            items.append({
+                "blob": blob,
+                "nome_full": nome_full,
+                "nome": nome_amigavel,
+                "tamanho": tamanho,
+                "updated": atualizado
+            })
+
+        # Filtro por busca
+        if termo:
+            t = termo.lower().strip()
+            items = [i for i in items if t in i["nome"].lower() or t in i["nome_full"].lower()]
+
+        # Ordenação
+        if criterio == "Nome":
+            keyf = lambda x: x["nome"].lower()
+        elif criterio == "Data":
+            keyf = lambda x: x["updated"] or datetime.min
+        else:  # Tamanho
+            keyf = lambda x: x["tamanho"] or 0
+
+        items.sort(key=keyf, reverse=reverso)
+
+        # Grid de cards
+        st.markdown('<div class="file-grid">', unsafe_allow_html=True)
+        for i, it in enumerate(items):
+            blob = it["blob"]
+            nome = it["nome"]
+            nome_full = it["nome_full"]
+            tam = _human_size(it["tamanho"] or 0)
+            dt = _pretty_dt(it["updated"]) if it["updated"] else "-"
+
+            # Baixar conteúdo apenas ao clicar no botão (lazy) usando callback simples
+            # Como st.download_button exige bytes, faremos aqui — em listas grandes, considere cache.
+            conteudo = blob.download_as_bytes()
+
+            st.markdown(f"""
+            <div class="file-card">
+              <div class="file-row">
+                <div class="file-pill">📕 PDF<span style="opacity:.7">•</span>{tam}</div>
+                <div class="file-meta">{dt}</div>
+              </div>
+              <div class="file-title" title="{nome_full}">{nome}</div>
+            """, unsafe_allow_html=True)
+
+            col_a, col_b = st.columns([1, 1])
+            with col_a:
+                st.download_button(
+                    "⬇️ Baixar",
+                    data=conteudo,
+                    file_name=nome_full,
+                    mime="application/pdf",
+                    key=f"dl_{tipo}_{i}"
+                )
+            with col_b:
+                # Botão extra (ex.: copiar nome) — opcional
+                if st.button("🔗 Copiar nome", key=f"cp_{tipo}_{i}"):
+                    st.toast(f"Nome copiado: {nome_full}")
+
+            st.markdown("</div>", unsafe_allow_html=True)
+        st.markdown('</div>', unsafe_allow_html=True)
 
 def gerar_horarios():
         horarios = []
@@ -22,181 +153,6 @@ def gerar_horarios():
                 horarios.append(f"{h:02d}:{m:02d}")
         return horarios
 
-
-
-class PDF(FPDF):
-    def header(self):
-        self.set_fill_color(14, 43, 58)
-        self.rect(0, 0, self.w, self.h, 'F')
-
-        if self.page_no() == 1:
-            logo_width = 150
-            x_center = (self.w - logo_width) / 2
-            y_center = (self.h - logo_width) / 2 - 30
-            self.image("assets/logo_neuro_sem_bk.png", x=x_center, y=y_center, w=logo_width)
-            self.logo_bottom_y = y_center + logo_width + 10
-        else:
-            logo_width = 35
-            x_centered = (self.w - logo_width) / 2
-            self.image("assets/logo_neuro_sem_bk.png", x=x_centered, y=10, w=logo_width)
-            self.ln(logo_width + 0)
-
-    def footer(self):
-        if self.page_no() == 1:
-            return
-        self.set_y(-15)
-        self.set_font("Arial", "I", 8)
-        self.set_text_color(240, 240, 240)
-        self.cell(0, 10, f"Página {self.page_no() - 1}", align="C")
-
-def gerar_pdf_texto(sessoes, cliente_nome, mes, ano, finalidade):
-    MESES_PT = {
-        "1": "Janeiro", "2": "Fevereiro", "3": "Março", "4": "Abril",
-        "5": "Maio", "6": "Junho", "7": "Julho", "8": "Agosto",
-        "9": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
-    }
-
-    mes_nome = MESES_PT.get(str(int(mes)), "Mês Inválido")
-    pdf = PDF(format="A4")
-    pdf.set_auto_page_break(auto=True, margin=15)
-    pdf.add_page()
-
-    # Capa
-    pdf.set_text_color(255, 255, 255)
-    pdf.set_font("Arial", "B", 22)
-    pdf.set_y(pdf.h - 70)
-    pdf.cell(0, 10, f"Relatório de Sessões - {cliente_nome}", ln=True, align="C")
-
-    pdf.set_y(pdf.h - 40)
-    pdf.set_font("Arial", "", 16)
-    pdf.cell(0, 10, f"{mes_nome} de {ano}", ln=True, align="C")
-
-    # Página de sessões
-    pdf.add_page()
-
-    for i, (_, row) in enumerate(sessoes.iterrows(), start=1):
-        hora_formatada = row['hora'][:5] if isinstance(row['hora'], str) else str(row['hora'])[:5]
-
-        # Título centralizado
-        pdf.set_font("Arial", "B", 12)
-        pdf.set_text_color(247, 215, 145)
-        pdf.cell(0, 10, f"Sessão {i}", ln=True, align="C")
-
-        # Tabela centralizada
-        pdf.set_fill_color(38, 64, 78)
-        pdf.set_draw_color(60, 90, 110)
-        pdf.set_text_color(255, 255, 255)
-
-        campos = [
-            ("Data", str(row['data'].date())),
-            ("Hora", hora_formatada),
-            ("Valor", f"R$ {row['valor']:.2f}"),
-            ("Status", row['status'].capitalize()),
-            ("Pendente", "Não" if row['pagamento'] else "Sim"),
-            ("Nota Fiscal", row.get("nota_fiscal") or "NF- N/D"),
-            ("Observação", row.get("observacao") or "N/A")
-        ]
-        if finalidade != 'Cliente':
-            campos.insert(4, ("Cobrar Cancelado", "Sim" if row['cobrar'] else "Não"))
-
-        col_width = 70
-        x_margin = (pdf.w - 2 * col_width) / 2
-        cell_height = 7
-
-        for label, valor in campos:
-            pdf.set_x(x_margin)
-            pdf.set_font("Arial", "B", 9)
-            pdf.cell(col_width, cell_height, f"{label}:", border=1, fill=True)
-            pdf.set_font("Arial", "", 9)
-            pdf.cell(col_width, cell_height, str(valor), border=1, ln=True, fill=True, align="C")
-
-        # Diário
-        if finalidade != 'Cliente':
-            pdf.ln(2)
-            pdf.set_font("Arial", "B", 10)
-            pdf.set_text_color(255, 255, 255)
-            pdf.cell(0, 8, "Diário de Sessão", ln=True, align="C")
-
-            emocoes = {
-                1: "Triste",
-                2: "Chateado",
-                3: "Neutro",
-                4: "Contente",
-                5: "Feliz"
-            }
-
-            entrada_val = row.get("emocao_entrada")
-            saida_val = row.get("emocao_saida")
-
-            entrada_desc = emocoes.get(int(entrada_val), "N/D") if pd.notnull(entrada_val) else "N/D"
-            saida_desc = emocoes.get(int(saida_val), "N/D") if pd.notnull(saida_val) else "N/D"
-
-            blocos = [
-                ("Conteúdo", row.get("conteudo") or "Não registrado"),
-                ("Objetivo", row.get("objetivo") or "Não registrado"),
-                ("Material", row.get("material") or "Não registrado"),
-                ("Ativ. Casa", row.get("atividade_casa") or "Não registrada"),
-                ("Emoção Entrada", entrada_desc),
-                ("Emoção Saída", saida_desc),
-                ("Próxima Sessão", row.get("proxima_sessao") or "Não registrada")
-            ]
-
-            # Tabela centralizada
-            pdf.set_fill_color(38, 64, 78)
-            pdf.set_draw_color(60, 90, 110)
-            pdf.set_text_color(255, 255, 255)
-
-            for label, valor in blocos:
-                pdf.set_x(x_margin)
-                pdf.set_font("Arial", "B", 9)
-                pdf.cell(col_width, 6, f"{label}:", border=1, fill=True)
-                pdf.set_font("Arial", "", 9)
-                pdf.multi_cell(col_width, 6, str(valor), border=1, fill=True, align="C")
-
-        pdf.ln(8)
-
-    # Página final com estatísticas
-    pdf.add_page()
-    
-    # Garantir tipos
-    sessoes["status"] = sessoes["status"].astype(str).str.strip()
-    sessoes["pagamento"] = sessoes["pagamento"].astype(int)
-    sessoes["cobrar"] = sessoes["cobrar"].astype(int)
-    sessoes["valor"] = pd.to_numeric(sessoes["valor"], errors="coerce").fillna(0)
-
-    # Filtragem correta 
-    sessoes_feitas = sessoes[sessoes["status"].str.lower() == "realizada"] 
-    sessoes_nao_feitas = sessoes[sessoes["status"].str.lower() == "falta"]
-
-    # Máscaras
-    feitas = sessoes["status"].str.lower() == "realizada"
-    nao_feitas_cobrar = (sessoes["status"].str.lower() == "falta") & (sessoes["cobrar"] == 1)
-
-    # 1) valor_total = (feitas) OU (não feitas com cobrar=1)
-    valor_total = sessoes.loc[feitas | nao_feitas_cobrar, "valor"].sum()
-
-    # 2) valor_pago = todas as sessões com pagamento=1
-    valor_pago = sessoes.loc[sessoes["pagamento"] == 1, "valor"].sum()
-
-    # 3) valor_pendente = (feitas OU não feitas com cobrar=1) e pagamento=0
-    valor_pendente = sessoes.loc[(feitas | nao_feitas_cobrar) & (sessoes["pagamento"] == 0), "valor"].sum()
-
-    # Título
-    pdf.set_font("Arial", "B", 16)
-    pdf.set_text_color(247, 215, 145)
-    pdf.cell(0, 10, "Estatísticas do Mês", ln=True, align="C")
-    pdf.ln(10)
-
-    # Texto
-    pdf.set_font("Arial", "", 12)
-    pdf.set_text_color(255, 255, 255)
-    pdf.cell(0, 8, f"Número de sessões feitas: {len(sessoes_feitas)}", ln=True, align="C")
-    pdf.cell(0, 8, f"Número de faltas: {len(sessoes_nao_feitas)}", ln=True, align="C")
-    pdf.cell(0, 8, f"Valor total: R$ {valor_total:.2f}", ln=True, align="C")
-    pdf.cell(0, 8, f"Valor pago: R$ {valor_pago:.2f}", ln=True, align="C")
-    pdf.cell(0, 8, f"Valor pendente: R$ {valor_pendente:.2f}", ln=True, align="C")
-
-    return pdf.output(dest="S").encode("latin1")
 
 def show_gerenciar_cliente(psicologo_responsavel):
     # --- Carregar dados
@@ -508,10 +464,39 @@ def show_gerenciar_cliente(psicologo_responsavel):
         #csv = sessoes_filtradas.to_csv(index=False).encode('utf-8')
         #st.download_button("⬇️ Exportar CSV", csv, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.csv", mime='text/csv')
 
-        st.markdown("### 🗓️ Exportar relatório mensal de sessões")
-        finalidade = st.selectbox("Escolha para quem será o relatório de sessão:",['Cliente','Psicólogo'])
-        pdf_bytes = gerar_pdf_texto(sessoes_filtradas, cliente_nome, mes, ano, finalidade)
-        st.download_button("📄 Exportar PDF", pdf_bytes, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.pdf", mime='application/pdf')
+        st.markdown("## 📄 Relatórios")
+
+        tab_mensal, tab_pend = st.tabs(["🗓️ Mensal de Sessões", "⚠️ Pendências Globais"])
+
+        with tab_mensal:
+            st.markdown("### 🗓️ Exportar relatório mensal de sessões")
+            finalidade = st.selectbox(
+                "Escolha para quem será o relatório de sessão:",
+                ["Cliente", "Psicólogo"],
+                key="finalidade_mensal"
+            )
+            pdf_bytes_mensal = gerar_pdf_texto(sessoes_filtradas, cliente_nome, mes, ano, finalidade)
+            nome_arquivo_mensal = f"sessoes_{cliente_nome}_{mes}_{ano}.pdf".replace(" ", "_")
+            st.download_button(
+                "📄 Exportar PDF",
+                pdf_bytes_mensal,
+                file_name=nome_arquivo_mensal,
+                mime="application/pdf",
+                key="btn_export_mensal"
+            )
+
+        with tab_pend:
+            st.markdown("### ⚠️ Exportar relatório de pendências de sessões (global)")
+            pdf_bytes_pend = gerar_pdf_pendencias(sessoes, cliente_nome)
+            nome_arquivo_pend = f"pendencias_{cliente_nome}.pdf".replace(" ", "_")
+            st.download_button(
+                "📄 Exportar Pendências PDF",
+                pdf_bytes_pend,
+                file_name=nome_arquivo_pend,
+                mime="application/pdf",
+                key="btn_export_pend"
+            )
+
     
     
     
@@ -601,7 +586,7 @@ def show_gerenciar_cliente(psicologo_responsavel):
         pasta_cliente = f"{cliente_nome}"  # usado como prefixo no GCS
 
         for tipo in tipos:
-            with st.expander(f"📂 {tipo}"):
+            with st.expander(f"📥 Submeter {tipo}", expanded=False):
                 st.markdown("**Enviar novo documento:**")
                 nome_personalizado = st.text_input(f"Nome do arquivo ({tipo})", key=f"{tipo}_nome")
 
@@ -624,26 +609,31 @@ def show_gerenciar_cliente(psicologo_responsavel):
 
                 elif uploaded_file and not nome_personalizado:
                     st.warning("⚠️ Por favor, informe um nome para o arquivo antes de enviar.")
-                
-                # Mostrar arquivos já enviados
-                st.markdown("**📄 Documentos salvos:**")
 
-                # Caminho correto: dentro da subpasta do tipo (ex: "joao_123/Laudos/")
+            with st.expander(f"📂 {tipo}", expanded=True):
                 prefixo_busca = f"{pasta_cliente}/{tipo}/"
                 arquivos = listar_arquivos_do_cliente(bucket_name, prefixo_busca)
 
-                # Nenhum filtro extra necessário — GCS já retorna só os arquivos dessa "pasta"
                 if arquivos:
-                    for blob in arquivos:
+                    for i, blob in enumerate(arquivos):
                         arquivo_nome = blob.name.split("/")[-1]
                         nome_amigavel = arquivo_nome.replace(f"{tipo}_", "").replace("_", " ")
                         conteudo = blob.download_as_bytes()
+                        tamanho = getattr(blob, "size", None) or len(conteudo)
+                        atualizado = getattr(blob, "updated", None)
 
-                        st.download_button(
-                            label=f"⬇️ {nome_amigavel}",
-                            data=conteudo,
-                            file_name=arquivo_nome,
-                            mime="application/pdf"
-                        )
+                        col1, col2 = st.columns([4,1])  # mais espaço pro nome
+                        with col1:
+                            st.write(f"📕 **{nome_amigavel}**")
+                            st.caption(f"{tamanho//1024} KB • {atualizado if atualizado else '-'}")
+                        with col2:
+                            st.download_button(
+                                "⬇ Baixar",
+                                data=conteudo,
+                                file_name=arquivo_nome,
+                                mime="application/pdf",
+                                key=f"dl_{tipo}_{i}"
+                            )
+                        st.divider()  # linha separadora
                 else:
                     st.info("Nenhum documento enviado ainda.")
