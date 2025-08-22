@@ -134,6 +134,7 @@ def criar_tabelas():
                     emocao_entrada BIGINT,
                     emocao_saida BIGINT,
                     proxima_sessao TEXT,
+                    observacao TEXT,
                     FOREIGN KEY (cliente_id) REFERENCES clientes(id)
                 );
             """)
@@ -241,9 +242,14 @@ def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
             """, (novo_id, nome, valor_sessao, psicologo_responsavel))
         conn.commit()
 
-def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao):
+def adicionar_sessao(
+    cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,
+    conteudo, objetivo, material, atividade_casa,
+    emocao_entrada, emocao_saida, proxima_sessao, observacao
+):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
+            # Verifica se já existe sessão nesse dia/hora para o cliente
             cursor.execute("""
                 SELECT COUNT(*) AS count FROM sessoes
                 WHERE cliente_id = %s AND data = %s AND hora = %s
@@ -251,18 +257,22 @@ def adicionar_sessao(cliente_id, data, hora, valor, status, cobrar, pagamento, n
             if cursor.fetchone()['count']:
                 raise ValueError("Sessão já registrada para este cliente neste horário.")
             
+            # Gera novo ID
             cursor.execute("SELECT MAX(id) AS max_id FROM sessoes")
             novo_id = (cursor.fetchone()['max_id'] or 0) + 1
             
+            # Insere com a nova coluna 'observacao'
             cursor.execute("""
                 INSERT INTO sessoes (
                     id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,
-                    conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao
+                    conteudo, objetivo, material, atividade_casa,
+                    emocao_entrada, emocao_saida, proxima_sessao, observacao
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             """, (
                 novo_id, cliente_id, data, hora, valor, status, cobrar, pagamento, nota_fiscal,
-                conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao
+                conteudo, objetivo, material, atividade_casa,
+                emocao_entrada, emocao_saida, proxima_sessao, observacao
             ))
         conn.commit()
 
@@ -280,7 +290,8 @@ def excluir_sessao(sessao_id):
         conn.commit()
 
 def update_sessao(sessao_id, pagamento, valor, status, cobrar, nota_fiscal,
-                  conteudo, objetivo, material, atividade_casa, emocao_entrada, emocao_saida, proxima_sessao):
+                  conteudo, objetivo, material, atividade_casa,
+                  emocao_entrada, emocao_saida, proxima_sessao, observacao):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
@@ -296,12 +307,14 @@ def update_sessao(sessao_id, pagamento, valor, status, cobrar, nota_fiscal,
                     atividade_casa = %s,
                     emocao_entrada = %s,
                     emocao_saida = %s,
-                    proxima_sessao = %s
+                    proxima_sessao = %s,
+                    observacao = %s
                 WHERE id = %s
             """, (
                 pagamento, valor, status, cobrar, nota_fiscal,
                 conteudo, objetivo, material, atividade_casa,
                 emocao_entrada, emocao_saida, proxima_sessao,
+                observacao,
                 sessao_id
             ))
         conn.commit()
@@ -313,6 +326,74 @@ def atualizar_privilegio_usuario(id_usuario, novo_privilegio):
                 "UPDATE login SET privilegio = %s WHERE id = %s",
                 (int(novo_privilegio), id_usuario)
             )
+        conn.commit()
+
+def atualizar_nome_cliente(cliente_id: int, novo_nome: str):
+    """Atualiza o nome do cliente garantindo que não exista duplicidade global de nome."""
+    if not novo_nome or str(novo_nome).strip() == "":
+        raise ValueError("Nome inválido.")
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            # impede duplicado de nome (mesma regra usada no adicionar_cliente)
+            cursor.execute("SELECT COUNT(*) AS count FROM clientes WHERE nome = %s AND id <> %s", (novo_nome, cliente_id))
+            if cursor.fetchone()['count']:
+                raise ValueError("Já existe um cliente com esse nome.")
+            cursor.execute("UPDATE clientes SET nome = %s WHERE id = %s", (novo_nome, cliente_id))
+        conn.commit()
+
+def update_sessao_data_hora(sessao_id: int, nova_data: str, nova_hora):
+    """
+    Altera data e hora da sessão.
+    - Garante que não exista outra sessão do MESMO cliente no mesmo dia/hora.
+    - 'nova_data' pode ser 'YYYY-MM-DD' (string) ou date.
+    - 'nova_hora' pode ser 'HH:MM[:SS]' (string) ou time.
+    """
+    from datetime import datetime, time
+
+    # normaliza data/hora
+    if hasattr(nova_data, "isoformat"):
+        data_str = nova_data.strftime("%Y-%m-%d")
+    else:
+        data_str = str(nova_data)
+
+    if isinstance(nova_hora, time):
+        hora_str = nova_hora.strftime("%H:%M:%S")
+    else:
+        # aceita "HH:MM" ou "HH:MM:SS"
+        try:
+            hhmm = datetime.strptime(str(nova_hora), "%H:%M")
+            hora_str = hhmm.strftime("%H:%M:%S")
+        except ValueError:
+            hhmmss = datetime.strptime(str(nova_hora), "%H:%M:%S")
+            hora_str = hhmmss.strftime("%H:%M:%S")
+
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            # descobre o cliente_id da sessão
+            cursor.execute("SELECT cliente_id FROM sessoes WHERE id = %s", (sessao_id,))
+            row = cursor.fetchone()
+            if not row:
+                raise ValueError("Sessão não encontrada.")
+            cliente_id = row["cliente_id"]
+
+            # impede conflito (outra sessão do mesmo cliente no mesmo dia/hora)
+            cursor.execute("""
+                SELECT COUNT(*) AS count
+                  FROM sessoes
+                 WHERE cliente_id = %s
+                   AND data = %s
+                   AND hora = %s
+                   AND id <> %s
+            """, (cliente_id, data_str, hora_str, sessao_id))
+            if cursor.fetchone()["count"]:
+                raise ValueError("Já existe outra sessão deste cliente neste dia/horário.")
+
+            # atualiza
+            cursor.execute("""
+                UPDATE sessoes
+                   SET data = %s, hora = %s
+                 WHERE id = %s
+            """, (data_str, hora_str, sessao_id))
         conn.commit()
 
 def listar_clientes(psicologo_responsavel):
@@ -370,24 +451,31 @@ def sessoes_por_cliente(cliente_id):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("""
-                SELECT * FROM sessoes 
+                SELECT
+                    id, cliente_id, data, hora, valor, status,
+                    cobrar, pagamento, nota_fiscal, conteudo, objetivo,
+                    material, atividade_casa, emocao_entrada, emocao_saida,
+                    proxima_sessao, observacao
+                FROM sessoes 
                 WHERE cliente_id = %s 
                 ORDER BY data DESC, hora DESC
             """, (cliente_id,))
-            rows = cursor.fetchall()  # lista de dicionários
+            rows = cursor.fetchall()
 
-            # Lista atualizada com todas as colunas da tabela
             colunas = [
                 "id", "cliente_id", "data", "hora", "valor", "status",
                 "cobrar", "pagamento", "nota_fiscal", "conteudo", "objetivo",
                 "material", "atividade_casa", "emocao_entrada", "emocao_saida",
-                "proxima_sessao"
+                "proxima_sessao", "observacao"
             ]
 
             if not rows:
                 return pd.DataFrame(columns=colunas)
-            else:
-                return pd.DataFrame(rows, columns=colunas)
+            df = pd.DataFrame(rows, columns=colunas)
+
+            # se sua coluna permitir NULL, garanta string vazia ao invés de NaN (opcional)
+            df["observacao"] = df["observacao"].fillna("")
+            return df
 
 def get_proximo_id(tabela, campo='id'):
     with get_mysql_conn() as conn:

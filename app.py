@@ -1,6 +1,4 @@
 import streamlit as st
-st.set_page_config(page_title="Neuropsicoclínica", page_icon="🧠", layout="wide")
-from streamlit_cookies_manager import EncryptedCookieManager
 from paginas.dashboard import show_dashboard
 from paginas.novo_cliente import show_novo_cliente
 from paginas.gerenciar_cliente import show_gerenciar_cliente
@@ -10,6 +8,9 @@ import base64
 import time
 import os
 
+st.set_page_config(page_title="Neuropsicoclínica", page_icon="🧠", layout="wide")
+
+from streamlit_cookies_manager import EncryptedCookieManager
 # Gerenciador de cookies criptografado
 cookies = EncryptedCookieManager(password=os.getenv("cookies_password"))
 
@@ -135,21 +136,12 @@ def interface(privilegio, usuario):
             st.session_state.logout_triggered = False
             st.rerun()
 
-        if pagina == "📄 Gerenciar Clientes" and not clientes.empty:
-            nome_busca = st.sidebar.text_input("🔎 Buscar cliente por nome")
-            nomes_filtrados = clientes[clientes['nome'].str.contains(nome_busca, case=False, na=False)] if nome_busca else clientes
-
-            if nomes_filtrados.empty:
-                st.sidebar.warning("Nenhum cliente encontrado com esse nome.")
-            else:
-                cliente_selecionado = st.sidebar.selectbox("👤 Selecione o cliente", list(nomes_filtrados['nome']))
-
         if pagina == "🏠 Página Inicial":
             show_dashboard(psicologo_responsavel)
         elif pagina == "➕ Novo Cliente":
             show_novo_cliente(psicologo_responsavel)
-        elif pagina == "📄 Gerenciar Clientes" and cliente_selecionado:
-            show_gerenciar_cliente(cliente_selecionado, psicologo_responsavel)
+        elif pagina == "📄 Gerenciar Clientes":
+            show_gerenciar_cliente(psicologo_responsavel)
         elif pagina == "✅ Edição de Usuários":
             show_edicao_usuarios()
 
