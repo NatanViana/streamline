@@ -3,6 +3,7 @@ from paginas.dashboard import show_dashboard
 from paginas.novo_cliente import show_novo_cliente
 from paginas.gerenciar_cliente import show_gerenciar_cliente
 from paginas.user_edition import show_edicao_usuarios
+from paginas.perfil import show_perfil
 from db.functions import listar_clientes, select_user, validate_user
 import base64
 import time
@@ -98,13 +99,15 @@ def interface(privilegio, usuario):
                 "🏠 Página Inicial",
                 "📄 Gerenciar Clientes",
                 "➕ Novo Cliente",
+                "👤 Perfil",
                 "✅ Edição de Usuários"
             ])
         else:
             pagina = st.sidebar.selectbox("Escolha uma opção", [
                 "🏠 Página Inicial",
                 "📄 Gerenciar Clientes",
-                "➕ Novo Cliente"
+                "➕ Novo Cliente",
+                "👤 Perfil"
             ])
 
         if pagina == "🏠 Página Inicial":
@@ -113,6 +116,8 @@ def interface(privilegio, usuario):
             show_novo_cliente(psicologo_responsavel)
         elif pagina == "📄 Gerenciar Clientes":
             show_gerenciar_cliente(psicologo_responsavel)
+        elif pagina == "👤 Perfil":
+            show_perfil()
         elif pagina == "✅ Edição de Usuários":
             show_edicao_usuarios()
 
