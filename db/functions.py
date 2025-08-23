@@ -139,6 +139,7 @@ def criar_tabelas():
                     nome VARCHAR(255) NOT NULL,
                     valor_sessao DOUBLE NOT NULL,
                     psicologo_responsavel BIGINT,
+                    dia_agendamento TEXT,
                     FOREIGN KEY (psicologo_responsavel) REFERENCES psicologos(id)
                 );
             """)
@@ -255,7 +256,7 @@ def adicionar_usuario(usuario, senha, funcao, psicologo_responsavel, privilegio)
 
         conn.commit()
 
-def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
+def adicionar_cliente(nome, valor_sessao, psicologo_responsavel, dia_agendamento):
     with get_mysql_conn() as conn:
         with conn.cursor() as cursor:
             cursor.execute("SELECT COUNT(*) AS count FROM clientes WHERE nome = %s", (nome,))
@@ -264,9 +265,9 @@ def adicionar_cliente(nome, valor_sessao, psicologo_responsavel):
             cursor.execute("SELECT MAX(id) AS max_id FROM clientes")
             novo_id = (cursor.fetchone()['max_id'] or 0) + 1
             cursor.execute("""
-                INSERT INTO clientes (id, nome, valor_sessao, psicologo_responsavel)
-                VALUES (%s, %s, %s, %s)
-            """, (novo_id, nome, valor_sessao, psicologo_responsavel))
+                INSERT INTO clientes (id, nome, valor_sessao, psicologo_responsavel, dia_agendamento)
+                VALUES (%s, %s, %s, %s, %s)
+            """, (novo_id, nome, valor_sessao, psicologo_responsavel, dia_agendamento))
         conn.commit()
 
 def adicionar_sessao(
@@ -368,6 +369,33 @@ def atualizar_nome_cliente(cliente_id: int, novo_nome: str):
             cursor.execute("UPDATE clientes SET nome = %s WHERE id = %s", (novo_nome, cliente_id))
         conn.commit()
 
+def atualizar_dia_agendamento_cliente(cliente_id: int, novo_dia: str):
+    """
+    Atualiza o dia de agendamento do cliente.
+    Valores permitidos: 'Segunda-feira', 'Terça-feira', 'Quarta-feira', 'Quinta-feira', 'Sexta-feira'.
+    """
+    DIAS_VALIDOS = {
+        "Segunda-feira",
+        "Terça-feira",
+        "Quarta-feira",
+        "Quinta-feira",
+        "Sexta-feira",
+        "Indefinido"
+    }
+
+    if novo_dia not in DIAS_VALIDOS:
+        raise ValueError("Dia inválido. Use apenas dias úteis (segunda a sexta).")
+
+    with get_mysql_conn() as conn:
+        with conn.cursor() as cursor:
+            cursor.execute(
+                "UPDATE clientes SET dia_agendamento = %s WHERE id = %s",
+                (novo_dia, cliente_id),
+            )
+            if cursor.rowcount == 0:
+                raise ValueError("Cliente não encontrado.")
+        conn.commit()
+
 def update_sessao_data_hora(sessao_id: int, nova_data: str, nova_hora):
     """
     Altera data e hora da sessão.
@@ -429,7 +457,7 @@ def listar_clientes(psicologo_responsavel):
         cursor.execute("SELECT * FROM clientes WHERE psicologo_responsavel = %s",(psicologo_responsavel,))
         rows = cursor.fetchall()  # lista de dicionários
        # Define os nomes esperados das colunas
-        colunas = ["id","nome","valor_sessao","psicologo_responsavel"]
+        colunas = ["id","nome","valor_sessao","psicologo_responsavel", "dia_agendamento"]
 
         if not rows:
             return pd.DataFrame(columns=colunas)

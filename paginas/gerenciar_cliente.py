@@ -2,7 +2,7 @@
 import streamlit as st
 from datetime import datetime
 import pandas as pd
-from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos, upload_para_gcs, listar_arquivos_do_cliente, manual_load_dotenv, update_sessao_data_hora, atualizar_nome_cliente, gerar_pdf_pendencias, gerar_pdf_texto
+from db.functions import listar_clientes, sessoes_por_cliente, adicionar_sessao, excluir_cliente, excluir_sessao, update_sessao, listar_psicologos, upload_para_gcs, listar_arquivos_do_cliente, manual_load_dotenv, update_sessao_data_hora, atualizar_nome_cliente, gerar_pdf_pendencias, gerar_pdf_texto, atualizar_dia_agendamento_cliente
 import time
 import os
 import json
@@ -14,137 +14,6 @@ MESES_PT = {
     "5": "Maio", "6": "Junho", "7": "Julho", "8": "Agosto",
     "9": "Setembro", "10": "Outubro", "11": "Novembro", "12": "Dezembro"
     }   
-
-
-# Utils bonitinhas
-def _human_size(n):
-    for unit in ["B", "KB", "MB", "GB", "TB"]:
-        if n < 1024:
-            return f"{n:.0f} {unit}" if unit == "B" else f"{n:.1f} {unit}"
-        n /= 1024
-    return f"{n:.1f} PB"
-
-def _pretty_dt(dt):
-    try:
-        return dt.strftime("%d %b %Y, %H:%M")
-    except Exception:
-        return "-"
-
-def render_lista_arquivos(bucket_name, pasta_cliente, tipo):
-    with st.expander(f"📂 {tipo}", expanded=True):
-        # --- CSS para os "cards"
-        st.markdown("""
-        <style>
-        .file-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
-        .file-card {
-            border: 1px solid rgba(0,0,0,0.06);
-            border-radius: 16px;
-            padding: 14px;
-            background: linear-gradient(180deg, rgba(255,255,255,0.9), rgba(250,250,252,0.9));
-            box-shadow: 0 1px 2px rgba(0,0,0,0.04);
-            transition: transform .12s ease, box-shadow .12s ease;
-        }
-        .file-card:hover { transform: translateY(-2px); box-shadow: 0 6px 18px rgba(0,0,0,0.06); }
-        .file-title { font-weight: 600; font-size: 0.98rem; margin: 0 0 4px 0; line-height: 1.25; }
-        .file-meta { color: #6b7280; font-size: 12.5px; margin-bottom: 10px; }
-        .file-pill { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:#374151; background:#EEF2FF; padding:6px 10px; border-radius:999px; }
-        .file-row { display:flex; align-items:center; justify-content:space-between; gap:10px; }
-        .file-actions { display:flex; gap:8px; }
-        .btn-outline {
-            border: 1px solid #E5E7EB; background: white; border-radius: 10px; padding: 8px 10px; font-size: 12.5px;
-            cursor: pointer;
-        }
-        .btn-outline:hover { background: #F9FAFB; }
-        </style>
-        """, unsafe_allow_html=True)
-
-        st.markdown("**📄 Documentos salvos**")
-
-        # Barra de busca + ordenação
-        c1, c2, c3 = st.columns([2, 1, 1])
-        with c1:
-            termo = st.text_input("Pesquisar pelo nome", placeholder="Ex.: laudo, recibo, contrato…")
-        with c2:
-            criterio = st.selectbox("Ordenar por", ["Nome", "Data", "Tamanho"], index=1)
-        with c3:
-            reverso = st.toggle("Desc", value=True, help="Ordem decrescente")
-
-        prefixo_busca = f"{pasta_cliente}/{tipo}/"
-        blobs = listar_arquivos_do_cliente(bucket_name, prefixo_busca)
-
-        if not blobs:
-            st.info("Nenhum documento enviado ainda.")
-            return
-
-        # Normalizar dados
-        items = []
-        for blob in blobs:
-            nome_full = blob.name.split("/")[-1]
-            nome_amigavel = nome_full.replace(f"{tipo}_", "").replace("_", " ")
-            # Alguns clientes do GCS têm atributos diferentes; tratamos defensivamente
-            tamanho = getattr(blob, "size", None) or len(blob.download_as_bytes())
-            atualizado = getattr(blob, "updated", None)
-            items.append({
-                "blob": blob,
-                "nome_full": nome_full,
-                "nome": nome_amigavel,
-                "tamanho": tamanho,
-                "updated": atualizado
-            })
-
-        # Filtro por busca
-        if termo:
-            t = termo.lower().strip()
-            items = [i for i in items if t in i["nome"].lower() or t in i["nome_full"].lower()]
-
-        # Ordenação
-        if criterio == "Nome":
-            keyf = lambda x: x["nome"].lower()
-        elif criterio == "Data":
-            keyf = lambda x: x["updated"] or datetime.min
-        else:  # Tamanho
-            keyf = lambda x: x["tamanho"] or 0
-
-        items.sort(key=keyf, reverse=reverso)
-
-        # Grid de cards
-        st.markdown('<div class="file-grid">', unsafe_allow_html=True)
-        for i, it in enumerate(items):
-            blob = it["blob"]
-            nome = it["nome"]
-            nome_full = it["nome_full"]
-            tam = _human_size(it["tamanho"] or 0)
-            dt = _pretty_dt(it["updated"]) if it["updated"] else "-"
-
-            # Baixar conteúdo apenas ao clicar no botão (lazy) usando callback simples
-            # Como st.download_button exige bytes, faremos aqui — em listas grandes, considere cache.
-            conteudo = blob.download_as_bytes()
-
-            st.markdown(f"""
-            <div class="file-card">
-              <div class="file-row">
-                <div class="file-pill">📕 PDF<span style="opacity:.7">•</span>{tam}</div>
-                <div class="file-meta">{dt}</div>
-              </div>
-              <div class="file-title" title="{nome_full}">{nome}</div>
-            """, unsafe_allow_html=True)
-
-            col_a, col_b = st.columns([1, 1])
-            with col_a:
-                st.download_button(
-                    "⬇️ Baixar",
-                    data=conteudo,
-                    file_name=nome_full,
-                    mime="application/pdf",
-                    key=f"dl_{tipo}_{i}"
-                )
-            with col_b:
-                # Botão extra (ex.: copiar nome) — opcional
-                if st.button("🔗 Copiar nome", key=f"cp_{tipo}_{i}"):
-                    st.toast(f"Nome copiado: {nome_full}")
-
-            st.markdown("</div>", unsafe_allow_html=True)
-        st.markdown('</div>', unsafe_allow_html=True)
 
 def gerar_horarios():
         horarios = []
@@ -162,38 +31,90 @@ def show_gerenciar_cliente(psicologo_responsavel):
         st.info("Nenhum cliente cadastrado.")
         st.stop()
 
-    # Dicionário id->nome para exibição
+    # Normalizações
     clientes['id'] = clientes['id'].astype(int)
     clientes['nome'] = clientes['nome'].astype(str)
-    id2nome = dict(zip(clientes['id'], clientes['nome']))
+    # Garante coluna 'dia_agendamento' presente e preenchida
+    if 'dia_agendamento' not in clientes.columns:
+        clientes['dia_agendamento'] = 'Indefinido'
+    else:
+        clientes['dia_agendamento'] = clientes['dia_agendamento'].fillna('Indefinido').astype(str)
 
-    # Lista de IDs
+    id2nome = dict(zip(clientes['id'], clientes['nome']))
     ids = clientes['id'].tolist()
 
     def remover_acentos(txt: str) -> str:
         if not isinstance(txt, str):
             return ""
-        return ''.join(
-            c for c in unicodedata.normalize('NFD', txt)
-            if unicodedata.category(c) != 'Mn'
-        )
+        import unicodedata
+        return ''.join(c for c in unicodedata.normalize('NFD', txt) if unicodedata.category(c) != 'Mn')
 
-    # Ordena IDs pelo nome (ignorando acentos e caixa)
-    ids_ordenados = sorted(ids, key=lambda cid: remover_acentos(id2nome.get(cid, "")).lower())
+    DIAS_VALIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Indefinido"]
 
-    # Estado inicial do cliente selecionado (se ainda não existir ou não for válido, define para o 1º)
+    st.markdown("""
+        <style>
+        /* Opções selecionadas (chips) */
+        .stMultiSelect [data-baseweb="tag"] {
+            background-color: #f7d791 !important;  /* verde esmeralda */
+            color: #fff !important;               /* texto branco */
+        }
+
+        /* Dropdown das opções */
+        .stMultiSelect [data-baseweb="select"] span {
+            color: #0e2b3a !important;            /* texto azul escuro */
+        }
+
+        /* Fundo do dropdown */
+        .stMultiSelect [data-baseweb="select"] {
+            color: #0e2b3a !important;            /* texto escuro */
+        }
+        </style>
+    """, unsafe_allow_html=True)
+
+    # ====== FILTRO: multiselect por dia (sidebar) ======
+    dias_filtrados = st.sidebar.multiselect(
+        "Filtrar por dia de agendamento",
+        DIAS_VALIDOS,
+        default=DIAS_VALIDOS,
+        key="filtro_dias_agendamento",
+    )
+
+    # Se nada for selecionado, considere TODOS os dias
+    dias_efetivos = dias_filtrados if dias_filtrados else DIAS_VALIDOS
+    if not dias_filtrados:
+        st.sidebar.caption("Nenhum dia selecionado — exibindo **todos** os dias.")
+
+    # Aplica filtro usando os dias efetivos
+    df_filtrado = clientes[clientes['dia_agendamento'].isin(dias_efetivos)].copy()
+
+    if df_filtrado.empty:
+        st.sidebar.info("Nenhum cliente no(s) dia(s) selecionado(s).")
+        st.stop()
+
+    # ====== Estado do cliente selecionado respeitando o filtro ======
+    # Define/ajusta cliente_id atual
     sel_id = st.session_state.get('cliente_id')
+
+    # Lista de IDs ordenada pelo nome (do DF filtrado!)
+    ids_filtrados = df_filtrado['id'].tolist()
+    ids_ordenados = sorted(ids_filtrados, key=lambda cid: remover_acentos(id2nome.get(cid, "")).lower())
+
     if sel_id not in ids_ordenados:
         sel_id = ids_ordenados[0]
         st.session_state['cliente_id'] = sel_id
 
-    # Cálculo de índice SEM lançar exceção
+    # Índice seguro
     try:
         idx_atual = ids_ordenados.index(st.session_state['cliente_id'])
     except ValueError:
         idx_atual = 0
 
-    # Selectbox
+    # ====== Mostrar dia_atual ACIMA do selectbox ======
+    # Busca o dia do cliente atualmente selecionado no DF filtrado
+    cliente_sel_row = df_filtrado.loc[df_filtrado['id'] == st.session_state['cliente_id']]
+    dia_atual = cliente_sel_row.iloc[0]['dia_agendamento'] if not cliente_sel_row.empty else "Indefinido"
+
+    # ====== Selectbox do cliente (já filtrado) ======
     st.session_state['cliente_id'] = st.sidebar.selectbox(
         "Cliente",
         options=ids_ordenados,
@@ -203,7 +124,17 @@ def show_gerenciar_cliente(psicologo_responsavel):
 
     cliente_id = st.session_state['cliente_id']
 
-    # Buscar o cliente SEMPRE por ID (não por nome)
+    if 'last_cliente_id' not in st.session_state:
+        st.session_state['last_cliente_id'] = cliente_id
+
+    if st.session_state['last_cliente_id'] != cliente_id:
+        # força reset dos campos desejados
+        st.session_state['status'] = "realizada"
+        st.session_state['pago'] = False
+        st.session_state['cobranca'] = False
+        st.session_state['last_cliente_id'] = cliente_id
+
+    # Buscar o cliente SEMPRE por ID (no DF completo; é o mesmo registro do filtrado, mas com todas colunas)
     cliente_row = clientes.loc[clientes['id'].astype(int) == int(cliente_id)]
     if cliente_row.empty:
         st.warning("Cliente não encontrado após atualização. Recarregue os dados.")
@@ -212,11 +143,39 @@ def show_gerenciar_cliente(psicologo_responsavel):
     cliente = cliente_row.iloc[0]
     cliente_nome = str(cliente['nome'])
 
-    # Cabeçalho
+    # ====== Cabeçalho (Nome + Dia de Agendamento lado a lado) ======
     psicologos_df = listar_psicologos()
     psicologo = psicologos_df[psicologos_df['id'] == psicologo_responsavel].iloc[0] if not psicologos_df.empty else {}
-    st.title(f"🧑 Cliente: {cliente_nome}")
-    st.write(f"👩🏻‍⚕️ Psicóloga Responsável: {psicologo.get('nome', 'N/A')}")
+
+    DIAS_VALIDOS = ["Segunda-feira", "Terça-feira", "Quarta-feira", "Quinta-feira", "Sexta-feira", "Indefinido"]
+
+    # Garante que temos o valor atual do dia
+    dia_atual = str(cliente.get('dia_agendamento') or "")
+    if dia_atual not in DIAS_VALIDOS:
+        dia_atual = DIAS_VALIDOS[0]  # fallback seguro
+
+    col_nome, col_dia = st.columns([0.88, 0.12])
+
+    with col_nome:
+        st.title(f"🧑 Cliente: {cliente_nome}")
+        st.write(f"👩🏻‍⚕️ Psicóloga Responsável: {psicologo.get('nome', 'N/A')}")
+    
+    with col_dia:
+        with st.popover(f"""`{dia_atual}`"""):
+            novo_dia = st.selectbox(
+                "Dia de agendamento",
+                DIAS_VALIDOS,
+                index=DIAS_VALIDOS.index(dia_atual),
+                key=f"select_dia_ag_{cliente_id}"
+            )
+
+            if st.button("💾 Atualizar dia", key=f"btn_atualizar_dia_{cliente_id}"):
+                try:
+                    atualizar_dia_agendamento_cliente(cliente_id, novo_dia)
+                    st.success("Dia de agendamento atualizado com sucesso.")
+                    st.rerun()
+                except ValueError as e:
+                    st.error(str(e))
 
     # ====== Renomear paciente ======
     with st.expander("✏️ Alterar nome do paciente"):
@@ -312,12 +271,12 @@ def show_gerenciar_cliente(psicologo_responsavel):
             with col2:
                 col21, col22, col23 = st.columns(3)
                 with col21:
-                    valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']))
+                    valor = st.number_input("💵 Valor", min_value=0.0, value=float(cliente['valor_sessao']), step=50.0)
                 with col22:
-                    status = st.selectbox("📌 Status", ["realizada", "falta"])
+                    status = st.selectbox("📌 Status", ["realizada", "falta"], key = "status")
                 with col23:
-                    cobrar = st.checkbox("💸 Cobrança de falta", value=False)
-                    pagamento = st.checkbox("💸 Pago", value=False)
+                    cobrar = st.checkbox("💸 Cobrança de falta", value=False, key ="cobranca")
+                    pagamento = st.checkbox("💸 Pago", value=False, key = "pago")
 
             col31, col32 = st.columns([2,1])
             with col31:
@@ -393,7 +352,7 @@ def show_gerenciar_cliente(psicologo_responsavel):
                     # ====== Campos existentes ======
                         col21, col22, col23 = st.columns(3)
                         with col21:
-                            novo_valor = st.number_input("💵 Valor", min_value=0.0, value=float(row['valor']), key=f"valor_{row['id']}")
+                            novo_valor = st.number_input("💵 Valor", min_value=0.0, value=float(row['valor']), key=f"valor_{row['id']}", step=50.0)
                         with col22:
                             novo_status = st.selectbox("📌 Status", ["realizada", "falta"],
                                                 index=["realizada", "falta"].index(row['status']),
@@ -430,7 +389,7 @@ def show_gerenciar_cliente(psicologo_responsavel):
                             nova_emocao_saida = int(saida_str.split()[0])
 
                         nova_proxima = st.text_area("🗓️ Planejamento Próxima Sessão", value=row.get('proxima_sessao', ''), key=f"proxima_{row['id']}")
-
+                    
                     # ====== Botão ÚNICO ======
                     submitted = st.form_submit_button(f"💾 Atualizar sessão")
                     if submitted:
@@ -456,10 +415,12 @@ def show_gerenciar_cliente(psicologo_responsavel):
                             except Exception as e:
                                 st.error(f"Erro ao atualizar a sessão: {e}")
 
-                if st.button(f"🗑️ Excluir sessão", key=f"excluir_{row['id']}"):
-                    excluir_sessao(row['id'])
-                    st.success("Sessão excluída com sucesso.")
-                    st.rerun()
+                col_esq, col_dir = st.columns([1, 0.2])
+                with col_dir:
+                    if st.button("🗑️ Excluir sessão", key=f"excluir_{row['id']}", use_container_width=True):
+                        excluir_sessao(row['id'])
+                        st.success("Sessão excluída com sucesso.")
+                        st.rerun()
 
         #csv = sessoes_filtradas.to_csv(index=False).encode('utf-8')
         #st.download_button("⬇️ Exportar CSV", csv, file_name=f"sessoes_{cliente_nome}_{mes}_{ano}.csv", mime='text/csv')
