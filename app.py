@@ -4,6 +4,7 @@ from paginas.novo_cliente import show_novo_cliente
 from paginas.gerenciar_cliente import show_gerenciar_cliente
 from paginas.user_edition import show_edicao_usuarios
 from paginas.perfil import show_perfil
+from paginas.coletania_modelos import show_modelos
 from db.functions import listar_clientes, select_user, validate_user
 import base64
 import time
@@ -97,27 +98,31 @@ def interface(privilegio, usuario):
         if privilegio:
             pagina = st.sidebar.selectbox("Escolha uma opção", [
                 "🏠 Página Inicial",
-                "📄 Gerenciar Clientes",
+                "🧑 Gerenciar Clientes",
                 "➕ Novo Cliente",
                 "👤 Perfil",
+                "📚 Coletânia de Modelos",
                 "✅ Edição de Usuários"
             ])
         else:
             pagina = st.sidebar.selectbox("Escolha uma opção", [
                 "🏠 Página Inicial",
-                "📄 Gerenciar Clientes",
+                "🧑 Gerenciar Clientes",
                 "➕ Novo Cliente",
-                "👤 Perfil"
+                "👤 Perfil",
+                "📚 Coletânia de Modelos"
             ])
 
         if pagina == "🏠 Página Inicial":
             show_dashboard(psicologo_responsavel)
         elif pagina == "➕ Novo Cliente":
             show_novo_cliente(psicologo_responsavel)
-        elif pagina == "📄 Gerenciar Clientes":
+        elif pagina == "🧑 Gerenciar Clientes":
             show_gerenciar_cliente(psicologo_responsavel)
         elif pagina == "👤 Perfil":
             show_perfil()
+        elif pagina == "📚 Coletânia de Modelos":
+            show_modelos()
         elif pagina == "✅ Edição de Usuários":
             show_edicao_usuarios()
 
@@ -125,11 +130,13 @@ def interface(privilegio, usuario):
             st.session_state.logout_triggered = False
             st.session_state.logout_time = 0
 
-        # Espaço para empurrar o botão para baixo
-        st.sidebar.markdown("<br>", unsafe_allow_html=True)
+        with st.sidebar:
+            st.write(" ")  # pode ter outros elementos
+            st.write(" ")  
 
-        # Botão wide estilizado via HTML
-        logout_clicked = st.sidebar.button("🚪 Sair", use_container_width=True)
+            st.markdown("""<div style='flex:1'></div>""", unsafe_allow_html=True)
+
+            logout_clicked = st.button("🚪 Sair", use_container_width=True)
 
         if logout_clicked:
             for key in ["user_id", "username", "login_timestamp"]:
